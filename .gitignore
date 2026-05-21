@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+settings.json
+logs/
+*.spec
+dist/
+build/
+# Исключить папку config и всё её содержимое
+config/
+
+# Исключить папку queries и всё её содержимое
+queries/
+
+# Исключить .claude и всё её содержимое
+.claude/
