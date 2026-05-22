@@ -1,4 +1,4 @@
-name: Auto Tag
+name: Auto Tag and Release
 
 on:
   push:
@@ -14,6 +14,10 @@ jobs:
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      skip: ${{ steps.ver.outputs.skip }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +60,49 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
           echo "Tagged and pushed: $TAG"
+
+  build:
+    needs: tag
+    if: needs.tag.outputs.skip != 'true'
+    runs-on: windows-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes
+
+      - name: Build
+        run: .\build.ps1
+        shell: pwsh
+
+      - name: Read version
+        id: version
+        run: |
+          $v = (Get-Content version.txt -Raw).Trim()
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ needs.tag.outputs.version }}"
+          name: "Hunch v${{ steps.version.outputs.version }}"
+          draft: false
+          prerelease: false
+          files: |
+            dist/Hunch_v${{ steps.version.outputs.version }}.zip
+            dist/Hunch_v${{ steps.version.outputs.version }}_portable.zip
+            dist/Hunch_v${{ steps.version.outputs.version }}_installer.exe
