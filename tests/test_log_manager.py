@@ -49,6 +49,7 @@ def test_persistence(tmp_path):
 
     lm1 = LogManager(log_file=log_file, settings_file=settings)
     lm1.add_log("persist me")
+    lm1.flush()  # запись теперь отложена — форсируем сброс на диск
 
     lm2 = LogManager(log_file=log_file, settings_file=settings)
     assert any(e["message"] == "persist me" for e in lm2.get_logs())
