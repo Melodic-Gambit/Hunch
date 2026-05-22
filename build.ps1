@@ -222,6 +222,26 @@ if ($imgExit -ne 0) {
     Write-Host "  Изображения установщика готовы" -ForegroundColor Green
 }
 
+# ── 9b. LATEST_CHANGES.txt for installer ─────────────────────────────────────
+Write-Host ""
+Write-Host "=== Latest Changes (for installer) ===" -ForegroundColor Cyan
+
+$latestChangesPath = Join-Path $root "LATEST_CHANGES.txt"
+$logLines = $null
+try {
+    $prevTag = (& git -C $root describe --tags --abbrev=0 "HEAD^" 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $prevTag) { throw "no prev tag" }
+    $logLines = & git -C $root log "$prevTag..HEAD" --pretty=format:"* %s" --no-merges 2>$null
+    if (-not $logLines) { throw "no commits since tag" }
+    Write-Host "  Changes since $prevTag" -ForegroundColor DarkGray
+} catch {
+    $logLines = & git -C $root log --pretty=format:"* %s" --no-merges -n 15 2>$null
+    Write-Host "  No previous tag — using last 15 commits" -ForegroundColor DarkGray
+}
+$content = "Версия v$version`r`n`r`n" + ($logLines -join "`r`n")
+Set-Content -Path $latestChangesPath -Value $content -Encoding UTF8
+Write-Host "  LATEST_CHANGES.txt written" -ForegroundColor Green
+
 # ── 10. Inno Setup: create installer EXE ─────────────────────────────────────
 Write-Host ""
 Write-Host "=== Inno Setup (installer EXE) ===" -ForegroundColor Cyan
