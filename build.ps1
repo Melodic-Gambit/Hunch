@@ -208,7 +208,20 @@ Compress-Archive -Path $exePortablePath `
                  -DestinationPath $zipPortablePath `
                  -Force
 
-# ── 9. Inno Setup: create installer EXE ──────────────────────────────────────
+# ── 9. Installer images ───────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "=== Installer images (generate_installer_images.py) ===" -ForegroundColor Cyan
+$ErrorActionPreference = "Continue"
+python (Join-Path $root "generate_installer_images.py")
+$imgExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($imgExit -ne 0) {
+    Write-Warning "  generate_installer_images.py вернул $imgExit — installer может использовать изображения по умолчанию"
+} else {
+    Write-Host "  Изображения установщика готовы" -ForegroundColor Green
+}
+
+# ── 10. Inno Setup: create installer EXE ─────────────────────────────────────
 Write-Host ""
 Write-Host "=== Inno Setup (installer EXE) ===" -ForegroundColor Cyan
 

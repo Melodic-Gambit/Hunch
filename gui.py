@@ -3382,8 +3382,11 @@ class MainWindow(ctk.CTk):
 
     def _navigate_to_notif_highlight(self, notif_id: int):
         """Переходит на вкладку Уведомления и мигает нужной строкой."""
-        self._highlight_notif_id = notif_id
         self._hamburger_select("🔔 Уведомления")
+        # Устанавливаем ПОСЛЕ _hamburger_select: внутри него _mark_all_read() сбрасывает
+        # _highlight_notif_id в None, поэтому нужно выставить значение уже после.
+        self._highlight_notif_id = notif_id
+        self.after(80, lambda: self._blink_notif_row(notif_id, 12))
 
     def _reposition_toasts(self):
         pass  # toast отображается inline в шапке — repositioning не нужен
@@ -8798,7 +8801,9 @@ class MainWindow(ctk.CTk):
             saved_max = latest.get(page_type)
 
             if saved_max is None:
-                # Первое обнаружение — фиксируем базовую точку и показываем текущее состояние
+                # Первое обнаружение — фиксируем базовую точку, found_changes не трогаем.
+                # Базовую точку устанавливает только ручной парсинг («Запустить парсинг»);
+                # фоновый мониторинг не должен показывать «найденными» номера старше baseline.
                 baseline = max(numbers)
                 latest[page_type] = baseline
                 self.settings_manager.set_setting("gf_scraping_latest", latest)
@@ -8806,9 +8811,6 @@ class MainWindow(ctk.CTk):
                 self.log_manager.add_log(
                     f"[GF.Scraping] {lbl}: базовая точка установлена автоматически → {baseline}",
                     "INFO")
-                if not found.get(page_type) and numbers:
-                    found[page_type] = sorted(numbers, reverse=True)[:10]
-                    has_new = True
                 continue
 
             new_nums = sorted([n for n in numbers if n > saved_max], reverse=True)
@@ -8825,11 +8827,7 @@ class MainWindow(ctk.CTk):
                     latest[page_type] = new_max
                     self.settings_manager.set_setting("gf_scraping_latest", latest)
                     self._update_gf_last_scan_display(latest)
-            elif not found.get(page_type) and numbers:
-                # Новых чисел нет, но found_changes пусто — показываем текущие данные
-                found[page_type] = sorted(numbers, reverse=True)[:10]
-                has_new = True
-            # else: новых нет, found_changes уже заполнено — оставляем без изменений
+            # else: новых нет — found_changes не трогаем
 
         # Сохраняем актуальное состояние и всегда обновляем отображение
         self.settings_manager.set_setting("gf_scraping_found_changes", found)
@@ -8888,14 +8886,14 @@ class MainWindow(ctk.CTk):
             # разделитель между типами
             if not first:
                 ctk.CTkLabel(self._gf_found_container, text="  ",
-                             font=ctk.CTkFont(size=12)).pack(side="left")
+                             font=ctk.CTkFont(size=14)).pack(side="left")
             first = False
             ctk.CTkLabel(self._gf_found_container, text=f"{label_name}: ",
-                         font=ctk.CTkFont(size=12),
+                         font=ctk.CTkFont(size=14),
                          text_color=("gray20", "white")).pack(side="left")
             nums_lbl = ctk.CTkLabel(
                 self._gf_found_container, text=nums_str,
-                font=ctk.CTkFont(size=12, weight="bold"),
+                font=ctk.CTkFont(size=14, weight="bold"),
                 text_color=("#0D9488", "#22C55E"),
                 cursor="hand2")
             nums_lbl.pack(side="left")

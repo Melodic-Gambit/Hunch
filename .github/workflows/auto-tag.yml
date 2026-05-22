@@ -1,0 +1,58 @@
+name: Auto Tag
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from merge commit
+        id: ver
+        run: |
+          MSG=$(git log -1 --pretty=%s)
+          echo "Commit: $MSG"
+          VERSION=$(echo "$MSG" | grep -oP 'V\.(\d+\.\d+\.\d+)' | head -1 | sed 's/^V\.//')
+          if [ -z "$VERSION" ]; then
+            echo "No V.X.Y.Z pattern found — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Will tag: v$VERSION"
+          fi
+
+      - name: Check tag does not already exist
+        if: steps.ver.outputs.skip != 'true'
+        id: check
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "Tag $TAG already exists — skipping"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.ver.outputs.skip != 'true' && steps.check.outputs.exists != 'true'
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Tagged and pushed: $TAG"

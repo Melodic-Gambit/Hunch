@@ -24,6 +24,8 @@ InfoAfterFile=CHANGELOG.md
 OutputDir=dist
 OutputBaseFilename=Hunch_v{#MyAppVersion}_installer
 SetupIconFile=Hunch.ico
+WizardImageFile=installer_banner.bmp
+WizardSmallImageFile=installer_small.bmp
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -51,8 +53,12 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}";      Filename: "{uninstallex
 Name: "{commondesktop}\{#MyAppName}";                    Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Dirs]
-; Папка настроек в %APPDATA% — создаётся при установке, удаляется при деинсталляции
-Name: "{userappdata}\{#MyAppName}"; Flags: uninsalwaysuninstall
+; Папка настроек в %APPDATA% — создаётся при установке
+Name: "{userappdata}\{#MyAppName}"
+
+[UninstallDelete]
+; Полностью удаляет %APPDATA%\Hunch при деинсталляции (настройки, логи, кэш)
+Type: filesandordirs; Name: "{userappdata}\{#MyAppName}"
 
 [Run]
 ; Запустить приложение после установки (опционально)
