@@ -18,8 +18,9 @@ if ($LASTEXITCODE -eq 0 -and $branch -match 'V\.(\d+\.\d+(?:\.\d+)*)') {
 
 # 1b. Git tag fallback
 if (-not $version) {
-    $gitTag = (& git -C $root describe --tags --abbrev=0 2>$null).Trim()
-    if ($LASTEXITCODE -eq 0 -and $gitTag) {
+    $gitTagRaw = & git -C $root describe --tags --abbrev=0 2>$null
+    if ($LASTEXITCODE -eq 0 -and $gitTagRaw) {
+        $gitTag = "$gitTagRaw".Trim()
         $version = $gitTag.TrimStart("v")
         Write-Host "  Git tag : $gitTag  ->  version $version" -ForegroundColor Green
     }

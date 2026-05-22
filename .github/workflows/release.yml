@@ -23,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -52,6 +54,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: "Hunch v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
           draft: false
           prerelease: false
           files: |
