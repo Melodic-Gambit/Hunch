@@ -168,12 +168,18 @@ class QueryDialog(ctk.CTkToplevel):
         self._sql_text.bind("<Control-A>",  self._select_all)
         self._sql_text.bind("<Button-3>",   self._show_sql_context_menu)
 
-        # ── Расписание обновления ─────────────────────────────────────────────
-        ctk.CTkLabel(self, text="Расписание обновления", anchor="w").grid(
-            row=6, column=0, **pad, pady=(12, 4), sticky="ew")
+        # ── Секция настроек (прокручиваемая) ─────────────────────────────────
+        _sf = ctk.CTkScrollableFrame(self, fg_color="transparent", height=260)
+        _sf.grid(row=6, column=0, padx=20, pady=(8, 0), sticky="ew")
+        _sf.grid_columnconfigure(0, weight=1)
+        ipad = {"padx": 8}
 
-        sched_frame = ctk.CTkFrame(self, fg_color="transparent")
-        sched_frame.grid(row=7, column=0, **pad, sticky="ew")
+        # ── Расписание обновления ─────────────────────────────────────────────
+        ctk.CTkLabel(_sf, text="Расписание обновления", anchor="w").grid(
+            row=0, column=0, **ipad, pady=(4, 4), sticky="ew")
+
+        sched_frame = ctk.CTkFrame(_sf, fg_color="transparent")
+        sched_frame.grid(row=1, column=0, **ipad, sticky="ew")
 
         # Режим: Интервал / По расписанию
         _sched_initial = "cron" if cron.get("enabled") else "interval"
@@ -234,24 +240,24 @@ class QueryDialog(ctk.CTkToplevel):
         self._update_sched_mode()
 
         # ── Мониторинг и оповещения ──────────────────────────────────────────────
-        sep = ctk.CTkFrame(self, height=1, fg_color=("gray70", "gray35"))
-        sep.grid(row=8, column=0, **pad, pady=(14, 0), sticky="ew")
+        ctk.CTkFrame(_sf, height=1, fg_color=("gray70", "gray35")).grid(
+            row=2, column=0, **ipad, pady=(14, 0), sticky="ew")
 
-        ctk.CTkLabel(self, text="Мониторинг и оповещения",
+        ctk.CTkLabel(_sf, text="Мониторинг и оповещения",
                      font=ctk.CTkFont(size=12, weight="bold"),
-                     anchor="w").grid(row=9, column=0, **pad, pady=(6, 6), sticky="ew")
+                     anchor="w").grid(row=3, column=0, **ipad, pady=(6, 6), sticky="ew")
 
         # Алерт при изменении результата
         self._alert_on_change_var = ctk.BooleanVar(value=bool(initial_alert_on_change))
         ctk.CTkCheckBox(
-            self, text="Алерт при изменении результата",
+            _sf, text="Алерт при изменении результата",
             variable=self._alert_on_change_var,
-        ).grid(row=10, column=0, **pad, pady=(0, 6), sticky="w")
+        ).grid(row=4, column=0, **ipad, pady=(0, 6), sticky="w")
 
         # Пороговый алерт
         thr = initial_alert_threshold or {}
-        thr_frame = ctk.CTkFrame(self, fg_color="transparent")
-        thr_frame.grid(row=11, column=0, **pad, pady=(0, 4), sticky="ew")
+        thr_frame = ctk.CTkFrame(_sf, fg_color="transparent")
+        thr_frame.grid(row=5, column=0, **ipad, pady=(0, 4), sticky="ew")
         thr_frame.grid_columnconfigure(4, weight=1)
 
         self._threshold_enabled_var = ctk.BooleanVar(
@@ -288,17 +294,17 @@ class QueryDialog(ctk.CTkToplevel):
         self._update_threshold_state()
 
         # ── Виджет ───────────────────────────────────────────────────────────
-        ctk.CTkFrame(self, height=1, fg_color=("gray70", "gray35")).grid(
-            row=12, column=0, **pad, pady=(14, 0), sticky="ew")
+        ctk.CTkFrame(_sf, height=1, fg_color=("gray70", "gray35")).grid(
+            row=6, column=0, **ipad, pady=(14, 0), sticky="ew")
         self._is_widget_var = ctk.BooleanVar(value=bool(initial_is_widget))
         ctk.CTkCheckBox(
-            self, text="Виджет  (показывать результат запроса в шапке программы)",
+            _sf, text="Виджет  (показывать результат запроса в шапке программы)",
             variable=self._is_widget_var,
-        ).grid(row=13, column=0, **pad, pady=(8, 0), sticky="w")
+        ).grid(row=7, column=0, **ipad, pady=(8, 8), sticky="w")
 
-        # Кнопки
+        # ── Кнопки (вне прокрутки, закреплены снизу) ─────────────────────────
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.grid(row=14, column=0, **pad, pady=16, sticky="ew")
+        btn_frame.grid(row=7, column=0, **pad, pady=(8, 16), sticky="ew")
         btn_frame.grid_columnconfigure((0, 1), weight=1)
 
         ok_text = "Сохранить" if self._edit_mode else "Добавить"

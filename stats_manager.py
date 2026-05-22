@@ -25,7 +25,9 @@ class StatsManager:
     def __init__(self, db_path: str = _DB_PATH):
         self._db_path = db_path
         self._lock    = threading.Lock()
+        self._conn: sqlite3.Connection = None
         self._init_db()
+        self._open_conn()
         self.rotate()
         self.rotate_by_size()
 
@@ -33,6 +35,18 @@ class StatsManager:
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _open_conn(self):
+        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+
+    def close(self):
+        if self._conn:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     def _init_db(self):
         with self._lock:
@@ -85,13 +99,12 @@ class StatsManager:
                row_count: int = 0, is_error: bool = False):
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._lock:
-            with self._connect() as conn:
-                conn.execute(
-                    "INSERT INTO query_stats (query_file, ts, duration_ms, row_count, is_error)"
-                    " VALUES (?, ?, ?, ?, ?)",
-                    (query_file, ts, duration_ms, row_count, int(is_error)),
-                )
-                conn.commit()
+            self._conn.execute(
+                "INSERT INTO query_stats (query_file, ts, duration_ms, row_count, is_error)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (query_file, ts, duration_ms, row_count, int(is_error)),
+            )
+            self._conn.commit()
 
     def get_summary(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Возвращает агрегированную статистику по каждому запросу."""
