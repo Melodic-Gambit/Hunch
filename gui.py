@@ -1269,6 +1269,8 @@ class DashboardPanel(ctk.CTkFrame):
         self._elapsed_id           = None
         self._cancel_fn            = None
         self._query_timeout: int   = 0
+        self.on_history_click      = None
+        self._last_query_file: str = ""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self._build()
@@ -1324,19 +1326,19 @@ class DashboardPanel(ctk.CTkFrame):
             image=_load_img, text="" if _load_img else "⬇",
             width=28, height=22,
             fg_color="transparent", hover_color=("gray70", "gray40"),
-            command=self._export_csv)
+            command=self._export_data)
         self.export_btn.grid(row=0, column=5, padx=(0, 2))
-        _Tooltip(self.export_btn, "Экспорт в CSV")
+        _Tooltip(self.export_btn, "Экспорт CSV / XLSX")
 
-        self.export_xlsx_btn = ctk.CTkButton(
+        self.history_btn = ctk.CTkButton(
             self.header,
-            text="XLS", width=32, height=22,
-            font=ctk.CTkFont(size=10, weight="bold"),
+            text="🕐", width=28, height=22,
+            font=ctk.CTkFont(size=11),
             fg_color="transparent", hover_color=("gray70", "gray40"),
             text_color=("gray20", "gray85"),
-            command=self._export_excel)
-        self.export_xlsx_btn.grid(row=0, column=6, padx=(0, 2))
-        _Tooltip(self.export_xlsx_btn, "Экспорт в Excel (.xlsx)")
+            command=self._on_history_click)
+        self.history_btn.grid(row=0, column=6, padx=(0, 2))
+        _Tooltip(self.history_btn, "История запросов")
 
         _pin_img = _get_pin_ctk_image(14)
         self.pin_btn = ctk.CTkButton(
@@ -1775,48 +1777,32 @@ class DashboardPanel(ctk.CTkFrame):
             self.result_table._clip(
                 "\t".join("" if v is None else str(v) for v in self.result_table._rows[0]))
 
-    def _export_csv(self):
+    def _on_history_click(self):
+        if callable(self.on_history_click):
+            self.on_history_click(self)
+
+    def _export_data(self):
         if not self.result_table._columns:
             messagebox.showinfo("Экспорт", "Нет данных для экспорта")
             return
         query   = self.get_query_name() or f"panel_{self.panel_id}"
         safe    = "".join(c if c.isalnum() or c in " _-" else "_" for c in query)
-        initial = f"{safe}.csv"
         filepath = filedialog.asksaveasfilename(
-            title="Экспорт в CSV",
+            title="Экспорт данных",
             defaultextension=".csv",
-            filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
-            initialfile=initial)
-        if filepath:
-            try:
-                self.result_table.export_to_csv(filepath)
-                messagebox.showinfo("Экспорт", f"Данные сохранены:\n{filepath}")
-            except Exception as e:
-                messagebox.showerror("Ошибка", f"Не удалось сохранить:\n{e}")
-
-    def _export_excel(self):
-        if not self.result_table._columns:
-            messagebox.showinfo("Экспорт", "Нет данных для экспорта")
+            filetypes=[("CSV файл", "*.csv"), ("Excel файл", "*.xlsx"),
+                       ("Все файлы", "*.*")],
+            initialfile=f"{safe}.csv")
+        if not filepath:
             return
         try:
-            import openpyxl  # noqa: F401
-        except ImportError:
-            messagebox.showerror("Ошибка", "Установите openpyxl:\npip install openpyxl")
-            return
-        query   = self.get_query_name() or f"panel_{self.panel_id}"
-        safe    = "".join(c if c.isalnum() or c in " _-" else "_" for c in query)
-        initial = f"{safe}.xlsx"
-        filepath = filedialog.asksaveasfilename(
-            title="Экспорт в Excel",
-            defaultextension=".xlsx",
-            filetypes=[("Excel файлы", "*.xlsx"), ("Все файлы", "*.*")],
-            initialfile=initial)
-        if filepath:
-            try:
+            if filepath.lower().endswith(".xlsx"):
                 self.result_table.export_to_excel(filepath)
-                messagebox.showinfo("Экспорт", f"Данные сохранены:\n{filepath}")
-            except Exception as e:
-                messagebox.showerror("Ошибка", f"Не удалось сохранить:\n{e}")
+            else:
+                self.result_table.export_to_csv(filepath)
+            messagebox.showinfo("Экспорт", f"Данные сохранены:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить:\n{e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3689,6 +3675,8 @@ class MainWindow(ctk.CTk):
                 command=lambda v, p=panel: self._run_panel_query(p))
             panel.on_signal_fired = (
                 lambda cn, st, p=panel: self._on_panel_signal_fired(p, cn, st))
+            panel.on_history_click = (
+                lambda p, _self=self: _self._show_panel_history(p))
             panel.bind_drag(
                 lambda e, p=panel: self._drag_start(e, p),
                 self._drag_motion,
@@ -3798,6 +3786,8 @@ class MainWindow(ctk.CTk):
             pw.bind("<ButtonRelease-1>",
                     lambda e: self.after(20, self._restore_pinned_sashes))
 
+        self.after(50, self._bind_tab_to_canvas)
+
     def _run_panel_query(self, panel: DashboardPanel):
         query_name = panel.get_query_name()
         if not query_name:
@@ -3869,6 +3859,7 @@ class MainWindow(ctk.CTk):
                 else:
                     panel.set_row_notice("")
                 panel.set_result(rows, cols)
+                panel._last_query_file = query_file
                 _rows_list = [list(r) for r in rows]
                 _cols_list = list(cols)
                 with self._query_results_lock:
@@ -3878,6 +3869,15 @@ class MainWindow(ctk.CTk):
                     }
                 self._save_query_cache()
                 ts = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                _hist = self._query_history.setdefault(query_file, [])
+                _hist.append({"ts": ts, "rows": _rows_list, "columns": _cols_list})
+                if len(_hist) > 10:
+                    _hist.pop(0)
+                _MAX_TOTAL = 100_000
+                while len(_hist) > 1:
+                    if sum(len(e["rows"]) for e in _hist) <= _MAX_TOTAL:
+                        break
+                    _hist.pop(0)
                 self._set_query_meta(query_file, last_updated=ts)
                 self._update_header_widget(query_file, _rows_list, _cols_list)
                 self.refresh_queries_list()
@@ -5145,10 +5145,18 @@ class MainWindow(ctk.CTk):
             txt.tag_add("kw", s, e)
         txt.configure(state="disabled")
 
-        ctk.CTkButton(dlg, text="Закрыть", command=dlg.destroy,
+        def _close_sql():
+            dlg.destroy()
+            try:
+                self.focus_set()
+            except Exception:
+                pass
+
+        ctk.CTkButton(dlg, text="Закрыть", command=_close_sql,
                       width=100).grid(row=2, column=0, columnspan=2, pady=(0, 8))
-        dlg.bind("<Escape>", lambda _: dlg.destroy())
-        dlg.bind("<Return>", lambda _: dlg.destroy())
+        dlg.bind("<Escape>", lambda _: _close_sql())
+        dlg.bind("<Return>", lambda _: _close_sql())
+        dlg.protocol("WM_DELETE_WINDOW", _close_sql)
 
         dlg.update_idletasks()
         w, h = 720, 520
@@ -5217,9 +5225,17 @@ class MainWindow(ctk.CTk):
             ctk.CTkButton(btn_f, text="Сравнить...", width=110,
                           command=lambda: self._show_query_diff(display_name, hist)
                           ).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(btn_f, text="Закрыть", command=dlg.destroy,
+        def _close_hist():
+            dlg.destroy()
+            try:
+                self.focus_set()
+            except Exception:
+                pass
+
+        ctk.CTkButton(btn_f, text="Закрыть", command=_close_hist,
                       width=100).pack(side="left")
-        dlg.bind("<Escape>", lambda _: dlg.destroy())
+        dlg.bind("<Escape>", lambda _: _close_hist())
+        dlg.protocol("WM_DELETE_WINDOW", _close_hist)
 
         dlg.update_idletasks()
         w, h = 900, 580
@@ -5328,15 +5344,32 @@ class MainWindow(ctk.CTk):
             ctk.CTkLabel(leg_f, text=txt, text_color=fg,
                          font=ctk.CTkFont(size=11)).pack(side="left", padx=8)
 
-        ctk.CTkButton(dlg, text="Закрыть", command=dlg.destroy,
+        def _close_diff():
+            dlg.destroy()
+            try:
+                self.focus_set()
+            except Exception:
+                pass
+
+        ctk.CTkButton(dlg, text="Закрыть", command=_close_diff,
                       width=100).grid(row=3, column=0, pady=(0, 8))
-        dlg.bind("<Escape>", lambda _: dlg.destroy())
+        dlg.bind("<Escape>", lambda _: _close_diff())
+        dlg.protocol("WM_DELETE_WINDOW", _close_diff)
 
         dlg.update_idletasks()
         w, h = 1060, 640
         x = self.winfo_rootx() + (self.winfo_width()  - w) // 2
         y = self.winfo_rooty() + (self.winfo_height() - h) // 2
         dlg.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _show_panel_history(self, panel):
+        """Открывает историю запросов для конкретной панели дашборда."""
+        query_name = panel.get_query_name() if panel else None
+        if not query_name:
+            import dialogs as _mb
+            _mb.showinfo("История", "Выберите запрос в панели")
+            return
+        self._show_query_history(query_name)
 
     def _refresh_panel_query_lists(self):
         if hasattr(self, "dash_panels"):

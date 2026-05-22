@@ -53,7 +53,23 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()  # обязателен для PyInstaller + multiprocessing/matplotlib
     from setup_dirs import create_directories
     create_directories()
-    _settings = SettingsManager()
+
+    if getattr(sys, "frozen", False):
+        _appdata_dir = os.path.join(os.environ.get("APPDATA", ""), "Hunch")
+        os.makedirs(_appdata_dir, exist_ok=True)
+        _new_settings = os.path.join(_appdata_dir, "settings.json")
+        _old_settings = os.path.join(os.path.dirname(sys.executable), "settings.json")
+        if not os.path.exists(_new_settings) and os.path.exists(_old_settings):
+            import shutil
+            try:
+                shutil.copy2(_old_settings, _new_settings)
+            except OSError:
+                pass
+        _settings_path = _new_settings
+    else:
+        _settings_path = "settings.json"
+
+    _settings = SettingsManager(_settings_path)
     ctk.set_appearance_mode(_settings.get_setting("theme", "dark"))
 
     a = theme_colors.accent()

@@ -1,8 +1,11 @@
+import re
 import threading
 import customtkinter as ctk
 import dialogs as messagebox
 from typing import Optional
 from utils import clipboard_get_text, setup_paste_bindings
+
+_INVALID_NAME_RE = re.compile(r'[\\/:*?"<>|]')
 
 try:
     import keyring as _keyring
@@ -406,9 +409,14 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
     # ── inline-валидация ─────────────────────────────────────────────────────
 
     def _validate_name_inline(self, event=None):
-        if not self.name_entry.get().strip():
+        name = self.name_entry.get().strip()
+        if not name:
             self.name_entry.configure(border_color=("#EF4444", "#DC2626"))
             self._hint_name.configure(text="Обязательное поле")
+            self._hint_name.grid()
+        elif _INVALID_NAME_RE.search(name):
+            self.name_entry.configure(border_color=("#EF4444", "#DC2626"))
+            self._hint_name.configure(text='Нельзя: \\ / : * ? " < > |')
             self._hint_name.grid()
         else:
             self.name_entry.configure(border_color=("gray70", "gray45"))
@@ -450,6 +458,13 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
         if not name:
             self._validate_name_inline()
             messagebox.showerror("Ошибка", "Введите имя подключения", parent=self)
+            return
+        if _INVALID_NAME_RE.search(name):
+            self._validate_name_inline()
+            messagebox.showerror(
+                "Ошибка",
+                'Имя подключения не может содержать символы: \\ / : * ? " < > |',
+                parent=self)
             return
 
         db_type   = self.db_type_combo.get().strip().lower()
@@ -501,10 +516,20 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
             config["password"] = password
 
         self.result = (name, config, interval)
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _on_cancel(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _copy_focused(self, event=None):
         w = self.focus_get()
