@@ -2403,9 +2403,14 @@ class MainWindow(ctk.CTk):
                 if not latest_tag:
                     self.after(0, _stop_spin)
                     return
+                installer_url = ""
+                for _asset in data[0].get("assets", []):
+                    if _asset.get("name", "").endswith("_installer.exe"):
+                        installer_url = _asset.get("browser_download_url", "")
+                        break
                 if _parse_ver(latest_tag) > _parse_ver(
                         getattr(self, "_version", "0.0.0")):
-                    self.after(0, lambda t=latest_tag: self._show_update_toast(t))
+                    self.after(0, lambda t=latest_tag, u=installer_url: self._show_update_toast(t, u))
                 self.after(0, _stop_spin)
             except Exception:
                 self.after(0, _stop_spin)
@@ -2413,9 +2418,21 @@ class MainWindow(ctk.CTk):
         _tick()
         threading.Thread(target=_fetch, daemon=True).start()
 
-    def _show_update_toast(self, new_version: str):
-        """Показывает небольшое всплывающее уведомление об обновлении."""
-        import webbrowser
+    def _show_update_toast(self, new_version: str, installer_url: str = ""):
+        """Показывает уведомление об обновлении по центру окна."""
+        import webbrowser, threading as _thr
+
+        # FEAT-11: дублируем в вкладку «Уведомления»
+        try:
+            cur = getattr(self, "_version", "?")
+            self._add_notification(
+                "Система",
+                message=f"Доступно обновление {new_version}. Установлена версия {cur}.",
+                system=True,
+            )
+        except Exception:
+            pass
+
         try:
             toast = ctk.CTkToplevel(self)
             toast.withdraw()
@@ -2429,7 +2446,7 @@ class MainWindow(ctk.CTk):
 
             ctk.CTkLabel(
                 outer,
-                text=f"Доступно обновление  v{new_version}",
+                text=f"Доступно обновление  {new_version}",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 anchor="w",
             ).pack(padx=14, pady=(12, 4), fill="x")
@@ -2445,13 +2462,79 @@ class MainWindow(ctk.CTk):
             btn_row = ctk.CTkFrame(outer, fg_color="transparent")
             btn_row.pack(padx=10, pady=(0, 12), fill="x")
 
+            # Прогресс-блок (скрыт до нажатия «Установить»)
+            prog_frame = ctk.CTkFrame(outer, fg_color="transparent")
+            prog_bar = ctk.CTkProgressBar(prog_frame, height=10)
+            prog_bar.set(0)
+            prog_bar.pack(padx=14, pady=(0, 4), fill="x")
+            prog_lbl = ctk.CTkLabel(
+                prog_frame, text="Загрузка…",
+                font=ctk.CTkFont(size=10), text_color=("gray50", "gray55"), anchor="w")
+            prog_lbl.pack(padx=14, pady=(0, 8), fill="x")
+
             ctk.CTkButton(
                 btn_row, text="Открыть", width=90, height=28,
                 command=lambda: (
-                    webbrowser.open(
-                        "https://github.com/Melodic-Gambit/Hunch/releases"),
+                    webbrowser.open("https://github.com/Melodic-Gambit/Hunch/releases"),
                     toast.destroy()),
             ).pack(side="left", padx=(0, 6))
+
+            if installer_url:
+                def _do_install():
+                    btn_row.pack_forget()
+                    prog_frame.pack(padx=10, pady=(0, 12), fill="x")
+                    toast.update_idletasks()
+                    tw = toast.winfo_width()
+                    th = toast.winfo_reqheight() + 6
+                    cx = self.winfo_x() + (self.winfo_width()  - tw) // 2
+                    cy = self.winfo_y() + (self.winfo_height() - th) // 2
+                    toast.geometry(f"{tw}x{th}+{cx}+{cy}")
+
+                    import tempfile, urllib.request, subprocess, os as _os
+                    tmp_path = _os.path.join(
+                        tempfile.gettempdir(), f"Hunch_{new_version}_installer.exe")
+
+                    def _reporthook(blk, blk_sz, total):
+                        if total <= 0:
+                            return
+                        frac   = min(blk * blk_sz / total, 1.0)
+                        done_m = blk * blk_sz / 1_048_576
+                        tot_m  = total / 1_048_576
+                        def _ui(f=frac, d=done_m, t=tot_m):
+                            if not toast.winfo_exists():
+                                return
+                            prog_bar.set(f)
+                            prog_lbl.configure(text=f"Загрузка… {d:.1f} / {t:.1f} МБ")
+                        self.after(0, _ui)
+
+                    def _fetch_and_run():
+                        try:
+                            urllib.request.urlretrieve(installer_url, tmp_path, _reporthook)
+                            def _launch():
+                                if toast.winfo_exists():
+                                    prog_lbl.configure(text="Запуск установщика…")
+                                subprocess.Popen(
+                                    [tmp_path, "/SILENT",
+                                     "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
+                                self.after(800, self.destroy)
+                            self.after(0, _launch)
+                        except Exception:
+                            def _on_error():
+                                if not toast.winfo_exists():
+                                    return
+                                prog_frame.pack_forget()
+                                btn_row.pack(padx=10, pady=(0, 12), fill="x")
+                            self.after(0, _on_error)
+
+                    _thr.Thread(target=_fetch_and_run, daemon=True).start()
+
+                ctk.CTkButton(
+                    btn_row, text="Установить", width=100, height=28,
+                    fg_color=theme_colors.accent(),
+                    hover_color=theme_colors.hover(),
+                    command=_do_install,
+                ).pack(side="left", padx=(0, 6))
+
             ctk.CTkButton(
                 btn_row, text="Закрыть", width=80, height=28,
                 fg_color=("gray65", "gray35"),
@@ -2459,14 +2542,15 @@ class MainWindow(ctk.CTk):
                 command=toast.destroy,
             ).pack(side="left")
 
+            # UX-10: по центру окна, 30 с
             toast.update_idletasks()
-            w, h = 310, toast.winfo_reqheight() + 6
-            x = self.winfo_x() + self.winfo_width() - w - 16
-            y = self.winfo_y() + 56
+            w = 360 if installer_url else 310
+            h = toast.winfo_reqheight() + 6
+            x = self.winfo_x() + (self.winfo_width()  - w) // 2
+            y = self.winfo_y() + (self.winfo_height() - h) // 2
             toast.geometry(f"{w}x{h}+{x}+{y}")
             toast.deiconify()
-            toast.after(12000, lambda: toast.destroy()
-                        if toast.winfo_exists() else None)
+            toast.after(30_000, lambda: toast.destroy() if toast.winfo_exists() else None)
         except Exception:
             pass
 
@@ -2587,6 +2671,10 @@ class MainWindow(ctk.CTk):
             pass
         try:
             self.db_manager.close_all()
+        except Exception:
+            pass
+        try:
+            self.log_manager.flush()
         except Exception:
             pass
         # Сигнал остановки GF.Scraping фоновым потокам
