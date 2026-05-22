@@ -4302,6 +4302,9 @@ class MainWindow(ctk.CTk):
         ctk.CTkLabel(hdr_row,
                      text="Статистика выполнения запросов",
                      font=ctk.CTkFont(size=15, weight="bold")).pack(side="left")
+        ctk.CTkLabel(hdr_row, text="• нажмите на строку для детализации",
+                     font=ctk.CTkFont(size=11),
+                     text_color=("gray50", "gray55")).pack(side="left", padx=(12, 0))
         ctk.CTkButton(hdr_row, text="Очистить", width=90, height=28,
                       fg_color=("gray55", "gray35"), hover_color=("gray45", "gray25"),
                       command=lambda: _refresh(clear=True)).pack(side="right")
@@ -4317,6 +4320,86 @@ class MainWindow(ctk.CTk):
         scroll = ctk.CTkScrollableFrame(dlg, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         scroll.grid_columnconfigure(0, weight=1)
+
+        def _show_detail(query_file: str, query_name: str):
+            detail = ctk.CTkToplevel(dlg)
+            detail.withdraw()
+            detail.title(f"Детализация: {query_name}")
+            detail.resizable(True, True)
+            detail.minsize(520, 340)
+            detail.transient(dlg)
+            detail.protocol("WM_DELETE_WINDOW", detail.destroy)
+
+            ctk.CTkLabel(
+                detail,
+                text=f"Последние запуски: {query_name}",
+                font=ctk.CTkFont(size=13, weight="bold"),
+            ).pack(fill="x", padx=16, pady=(14, 2))
+            ctk.CTkLabel(
+                detail,
+                text=f"файл: {query_file}",
+                font=ctk.CTkFont(size=11),
+                text_color=("gray50", "gray55"),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(0, 6))
+
+            D_HDRS = ("#", "Время запуска", "Длительность (мс)", "Строк", "Статус")
+            D_WGTS = (0, 1, 0, 0, 0)
+            D_MINS = (40, 160, 130, 70, 90)
+
+            dscroll = ctk.CTkScrollableFrame(detail, fg_color="transparent")
+            dscroll.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+            dscroll.grid_columnconfigure(0, weight=1)
+
+            recent = self.stats_manager.get_recent(query_file, limit=20)
+            dtbl = ctk.CTkFrame(dscroll, fg_color="transparent")
+            dtbl.grid(row=0, column=0, sticky="ew")
+            dscroll.grid_columnconfigure(0, weight=1)
+
+            for i, (h, wt, mw) in enumerate(zip(D_HDRS, D_WGTS, D_MINS)):
+                dtbl.grid_columnconfigure(i, weight=wt, minsize=mw)
+                ctk.CTkLabel(
+                    dtbl, text=h, anchor="w",
+                    font=ctk.CTkFont(weight="bold"),
+                    fg_color=("gray78", "gray25"),
+                ).grid(row=0, column=i, padx=6, pady=4, sticky="nsew")
+
+            if not recent:
+                ctk.CTkLabel(dscroll, text="Нет данных",
+                             text_color=("gray50", "gray60")).grid(
+                    row=1, column=0, pady=20)
+            else:
+                dsm = ctk.CTkFont(size=12)
+                for ri, r in enumerate(recent):
+                    bg = ("gray88", "gray20") if ri % 2 == 0 else ("gray83", "gray17")
+                    is_err = bool(r["is_error"])
+                    dvals = [
+                        str(ri + 1),
+                        r["ts"],
+                        f'{r["duration_ms"]:.0f}',
+                        str(r["row_count"]),
+                        "❌ Ошибка" if is_err else "✅ OK",
+                    ]
+                    for ci, val in enumerate(dvals):
+                        lbl = ctk.CTkLabel(dtbl, text=val, anchor="w",
+                                           fg_color=bg, font=dsm)
+                        if ci == 4:
+                            lbl.configure(
+                                text_color=("#DC2626", "#F87171") if is_err
+                                else ("#16A34A", "#4ADE80"))
+                        lbl.grid(row=ri + 1, column=ci, padx=6, pady=2, sticky="nsew")
+
+            def _dcenter():
+                detail.update_idletasks()
+                pw = dlg.winfo_width(); ph = dlg.winfo_height()
+                px = dlg.winfo_rootx(); py = dlg.winfo_rooty()
+                w  = detail.winfo_reqwidth()
+                h  = detail.winfo_reqheight()
+                detail.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+                detail.deiconify()
+                detail.lift()
+
+            detail.after(60, _dcenter)
 
         def _export_csv():
             import csv
@@ -4374,6 +4457,7 @@ class MainWindow(ctk.CTk):
             sm = ctk.CTkFont(size=12)
             for ri, row in enumerate(rows):
                 bg = ("gray88", "gray20") if ri % 2 == 0 else ("gray83", "gray17")
+                bg_hover = ("gray80", "gray28")
                 qname = dm.get_query_display_name(row["query_file"]) or row["query_file"]
                 vals = [
                     qname,
@@ -4384,10 +4468,20 @@ class MainWindow(ctk.CTk):
                     f'{row["avg_rows"]:.0f}',
                     row["last_run"] or "—",
                 ]
+                row_lbls = []
                 for ci, val in enumerate(vals):
-                    ctk.CTkLabel(tbl, text=val, anchor="w",
-                                 fg_color=bg, font=sm).grid(
-                        row=ri + 1, column=ci, padx=6, pady=2, sticky="nsew")
+                    lbl = ctk.CTkLabel(tbl, text=val, anchor="w",
+                                       fg_color=bg, font=sm, cursor="hand2")
+                    lbl.grid(row=ri + 1, column=ci, padx=6, pady=2, sticky="nsew")
+                    row_lbls.append(lbl)
+                _qf, _qn = row["query_file"], qname
+                for lbl in row_lbls:
+                    lbl.bind("<Button-1>",
+                             lambda e, f=_qf, n=_qn: _show_detail(f, n))
+                    lbl.bind("<Enter>",
+                             lambda e, ls=row_lbls: [l.configure(fg_color=bg_hover) for l in ls])
+                    lbl.bind("<Leave>",
+                             lambda e, ls=row_lbls, c=bg: [l.configure(fg_color=c) for l in ls])
 
         _refresh()
 
