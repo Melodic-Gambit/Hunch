@@ -11,6 +11,9 @@ _PAGE_SIZE = 100
 class ResultTable(ctk.CTkFrame):
     """Таблица результатов SQL: заголовки из cursor.description, сортировка, копирование, pagination."""
 
+    _last_applied_mode: str = ""
+    _last_applied_accent: str = ""
+
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
         self._columns: list = []
@@ -86,13 +89,20 @@ class ResultTable(ctk.CTkFrame):
 
     @staticmethod
     def _apply_style():
+        mode   = ctk.get_appearance_mode()
+        accent = theme_colors.accent()
+        if (mode   == ResultTable._last_applied_mode
+                and accent == ResultTable._last_applied_accent):
+            return
+        ResultTable._last_applied_mode   = mode
+        ResultTable._last_applied_accent = accent
         s = ttk.Style()
         try:
             if s.theme_use() in ('vista', 'xpnative', 'winnative'):
                 s.theme_use('clam')
         except Exception:
             pass
-        dark = ctk.get_appearance_mode() == "Dark"
+        dark = mode == "Dark"
         bg   = "#2b2b2b" if dark else "#dbdbdb"
         fg   = "#dcddde" if dark else "#1a1a1a"
         hdr  = "#3a3a3a" if dark else "#c5c5c5"
@@ -110,6 +120,7 @@ class ResultTable(ctk.CTkFrame):
               background=[("active", sel)])
 
     def refresh_style(self):
+        ResultTable._last_applied_mode = ""
         ResultTable._apply_style()
         self._render()
 
@@ -119,6 +130,7 @@ class ResultTable(ctk.CTkFrame):
             self._empty_lbl.configure(text_color=("#808080", new_accent))
         except Exception:
             pass
+        ResultTable._last_applied_mode = ""
         ResultTable._apply_style()
         self._render()
 
