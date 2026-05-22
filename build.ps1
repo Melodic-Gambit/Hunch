@@ -208,6 +208,38 @@ Compress-Archive -Path $exePortablePath `
                  -DestinationPath $zipPortablePath `
                  -Force
 
+# ── 9. Inno Setup: create installer EXE ──────────────────────────────────────
+Write-Host ""
+Write-Host "=== Inno Setup (installer EXE) ===" -ForegroundColor Cyan
+
+$iscc = $null
+$isccPaths = @(
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+    "C:\ProgramData\chocolatey\bin\iscc.exe"
+)
+foreach ($p in $isccPaths) {
+    if (Test-Path $p) { $iscc = $p; break }
+}
+if (-not $iscc) {
+    try { $iscc = (Get-Command iscc.exe -ErrorAction Stop).Source } catch {}
+}
+
+if (-not $iscc) {
+    Write-Warning "  iscc.exe не найден — установщик .exe не создан. Установите Inno Setup 6 или добавьте его в PATH."
+} else {
+    Write-Host "  iscc : $iscc" -ForegroundColor DarkGray
+    $issPath = Join-Path $root "Hunch.iss"
+    $ErrorActionPreference = "Continue"
+    & $iscc "/DMyAppVersion=$version" $issPath
+    $isccExit = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($isccExit -ne 0) { throw "Inno Setup failed with code $isccExit" }
+    Write-Host "  Installer EXE создан" -ForegroundColor Green
+}
+
+$installerExePath = Join-Path $root "dist\Hunch_v${version}_installer.exe"
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=== BUILD OK - Hunch v$version ===" -ForegroundColor Green
@@ -215,4 +247,7 @@ Write-Host "  Installer EXE      : $exePath"
 Write-Host "  Installer ZIP      : $zipPath"
 Write-Host "  Portable EXE       : $exePortablePath"
 Write-Host "  Portable ZIP       : $zipPortablePath"
+if (Test-Path $installerExePath) {
+    Write-Host "  Setup installer    : $installerExePath"
+}
 Write-Host ""

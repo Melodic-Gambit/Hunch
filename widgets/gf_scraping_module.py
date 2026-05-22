@@ -931,7 +931,7 @@ class GFScrapingWindow(ctk.CTkToplevel):
         _ico = os.path.join(
             sys._MEIPASS if getattr(sys, "frozen", False)
             else os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "support_system.ico"
+            "Hunch.ico"
         )
         self.after(250, lambda i=_ico: self.iconbitmap(i) if os.path.exists(i) else None)
 

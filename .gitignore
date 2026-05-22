@@ -5,8 +5,11 @@ __pycache__/
 settings.json
 logs/
 *.spec
+!main.spec
+!main_portable.spec
 dist/
 build/
+build_log.txt
 # Исключить папку config и всё её содержимое
 config/
 

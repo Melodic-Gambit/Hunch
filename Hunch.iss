@@ -2,7 +2,9 @@
 ; Сборка установщика: iscc Hunch.iss  (Inno Setup 6+)
 
 #define MyAppName      "Hunch"
-#define MyAppVersion   "3.1.1"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0"
+#endif
 #define MyAppPublisher "Hunch"
 #define MyAppExeName   "Hunch.exe"
 #define MyAppDir       "dist\Hunch"
@@ -21,7 +23,7 @@ LicenseFile=LICENSE.txt
 InfoAfterFile=CHANGELOG.md
 OutputDir=dist
 OutputBaseFilename=Hunch_v{#MyAppVersion}_installer
-SetupIconFile=support_system.ico
+SetupIconFile=Hunch.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
