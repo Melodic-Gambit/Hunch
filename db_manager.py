@@ -47,6 +47,9 @@ except ImportError:
     pyodbc = None
 
 
+_INVALID_CONN_NAME_RE = re.compile(r'[\\/:*?"<>|]')
+
+
 class DatabaseManager:
     # Соединение переиспользуется, пока простаивает не дольше этого порога (секунды).
     _CONN_TTL: float = 30.0
@@ -85,6 +88,9 @@ class DatabaseManager:
             pass
 
     def load_config(self, config_name: str) -> Dict[str, Any]:
+        if _INVALID_CONN_NAME_RE.search(config_name):
+            raise ValueError(
+                f"Имя подключения содержит недопустимые символы Windows FS: {config_name!r}")
         config_path = os.path.join(self.config_dir, f"{config_name}.json")
         try:
             with open(config_path, 'r', encoding='utf-8') as f:

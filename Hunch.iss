@@ -47,10 +47,10 @@ Source: "{#MyAppDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs c
 
 [Icons]
 ; Ярлык в меню «Пуск»
-Name: "{group}\{#MyAppName}";                            Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}";                            Filename: "{app}\{#MyAppExeName}"; WindowStyle: wsMaximized
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}";      Filename: "{uninstallexe}"
 ; Ярлык на рабочем столе (необязательно, задаётся в Tasks)
-Name: "{commondesktop}\{#MyAppName}";                    Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{commondesktop}\{#MyAppName}";                    Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; WindowStyle: wsMaximized
 
 [Dirs]
 ; Папка настроек в %APPDATA% — создаётся при установке
