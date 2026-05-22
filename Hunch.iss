@@ -74,7 +74,7 @@ Filename: "{app}\{#MyAppExeName}"; \
 // ── Windows API ───────────────────────────────────────────────────────────────
 function SetWindowTheme(Hwnd: HWND; pszSubAppName: String; pszSubIdList: String): HRESULT;
   external 'SetWindowTheme@uxtheme.dll stdcall';
-function SendMessage(hWnd: HWND; Msg: UINT; wParam: WPARAM; lParam: LPARAM): LRESULT;
+function SendMessage(hWnd: HWND; Msg: Cardinal; wParam: LongWord; lParam: LongInt): LongInt;
   external 'SendMessageA@user32.dll stdcall';
 
 // ── Brand colours — Windows BGR notation ─────────────────────────────────────
