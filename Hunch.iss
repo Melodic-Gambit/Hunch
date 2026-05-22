@@ -88,6 +88,7 @@ const
 
   PBM_SETBARCOLOR = $0409;
   PBM_SETBKCOLOR  = $040A;
+  BM_CLICK        = $00F5;
 
 // ── Fake button panels ────────────────────────────────────────────────────────
 var
@@ -95,17 +96,20 @@ var
 
 procedure OnNextClick(Sender: TObject);
 begin
-  if WizardForm.NextButton.Enabled then WizardForm.NextButton.Click;
+  if WizardForm.NextButton.Enabled then
+    SendMessage(WizardForm.NextButton.Handle, BM_CLICK, 0, 0);
 end;
 
 procedure OnBackClick(Sender: TObject);
 begin
-  if WizardForm.BackButton.Enabled then WizardForm.BackButton.Click;
+  if WizardForm.BackButton.Enabled then
+    SendMessage(WizardForm.BackButton.Handle, BM_CLICK, 0, 0);
 end;
 
 procedure OnCancelClick(Sender: TObject);
 begin
-  if WizardForm.CancelButton.Enabled then WizardForm.CancelButton.Click;
+  if WizardForm.CancelButton.Enabled then
+    SendMessage(WizardForm.CancelButton.Handle, BM_CLICK, 0, 0);
 end;
 
 // Strip accelerator & prefix chars from button captions (e.g. "&Далее >" → "Далее >")
