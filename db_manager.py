@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import threading
+import time
 from typing import Dict, Any, List, Tuple, Optional
 
 try:
@@ -47,9 +48,13 @@ except ImportError:
 
 
 class DatabaseManager:
+    # Соединение переиспользуется, пока простаивает не дольше этого порога (секунды).
+    _CONN_TTL: float = 30.0
+
     def __init__(self, config_dir: str = "config"):
         self.config_dir = config_dir
         self.connections: Dict[str, Any] = {}
+        self._conn_last_used: Dict[str, float] = {}
         self._lock = threading.Lock()
 
     @staticmethod
@@ -187,10 +192,22 @@ class DatabaseManager:
 
     # ── внутренний метод выполнения ────────────────────────────────────────────
 
+    def _evict_if_stale(self, config_name: str):
+        """Закрывает и удаляет соединение, если оно простаивало дольше TTL."""
+        last = self._conn_last_used.get(config_name)
+        if last is not None and (time.monotonic() - last) > self._CONN_TTL:
+            try:
+                self.connections[config_name].close()
+            except Exception:
+                pass
+            self.connections.pop(config_name, None)
+            self._conn_last_used.pop(config_name, None)
+
     def _run(self, config_name: str, query: str) -> Tuple[List[tuple], List[str]]:
         """Выполняет запрос (уже проверенный на SELECT), возвращает (rows, columns).
         Использует блокировку — безопасно вызывать из фонового потока."""
         with self._lock:
+            self._evict_if_stale(config_name)
             if config_name not in self.connections:
                 self.connect(config_name)
             cursor = None
@@ -199,15 +216,18 @@ class DatabaseManager:
                 cursor.execute(query)
                 rows = cursor.fetchall()
                 cols = [d[0] for d in (cursor.description or [])]
+                self._conn_last_used[config_name] = time.monotonic()
                 return rows, cols
             except Exception:
                 try:
                     self.connections.pop(config_name, None)
+                    self._conn_last_used.pop(config_name, None)
                     self.connect(config_name)
                     cursor = self.connections[config_name].cursor()
                     cursor.execute(query)
                     rows = cursor.fetchall()
                     cols = [d[0] for d in (cursor.description or [])]
+                    self._conn_last_used[config_name] = time.monotonic()
                     return rows, cols
                 except Exception as e:
                     raise RuntimeError(f"Ошибка выполнения запроса: {e}")
@@ -336,3 +356,4 @@ class DatabaseManager:
                 except Exception:
                     pass
             self.connections.clear()
+            self._conn_last_used.clear()

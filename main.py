@@ -2,25 +2,15 @@ import multiprocessing
 import subprocess
 import customtkinter as ctk
 from gui import MainWindow
-import json
 import os
 import sys
 import theme_colors
+from settings import SettingsManager
 
 
 def resource_path(filename: str) -> str:
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, filename)
-
-
-def load_saved_theme() -> str:
-    if os.path.exists("settings.json"):
-        try:
-            with open("settings.json", "r", encoding="utf-8") as f:
-                return json.load(f).get("theme", "dark")
-        except Exception:
-            pass
-    return "dark"
 
 
 def _read_version() -> str:
@@ -63,7 +53,8 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()  # обязателен для PyInstaller + multiprocessing/matplotlib
     from setup_dirs import create_directories
     create_directories()
-    ctk.set_appearance_mode(load_saved_theme())
+    _settings = SettingsManager()
+    ctk.set_appearance_mode(_settings.get_setting("theme", "dark"))
 
     a = theme_colors.accent()
     if a != "#0D9488":
@@ -75,7 +66,7 @@ if __name__ == "__main__":
     VERSION = _read_version()
     app = MainWindow(version=VERSION)
     try:
-        app.iconbitmap(resource_path("support_system.ico"))
+        app.iconbitmap(resource_path("Hunch.ico"))
     except Exception:
         pass
     app.mainloop()

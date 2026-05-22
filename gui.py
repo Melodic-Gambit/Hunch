@@ -2483,7 +2483,7 @@ class MainWindow(ctk.CTk):
             import threading as _thr
 
             _base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-            _ico  = os.path.join(_base, "support_system.ico")
+            _ico  = os.path.join(_base, "Hunch.ico")
             try:
                 _img = _PILImg.open(_ico)
             except Exception:
@@ -4305,6 +4305,8 @@ class MainWindow(ctk.CTk):
         ctk.CTkButton(hdr_row, text="Очистить", width=90, height=28,
                       fg_color=("gray55", "gray35"), hover_color=("gray45", "gray25"),
                       command=lambda: _refresh(clear=True)).pack(side="right")
+        ctk.CTkButton(hdr_row, text="Экспорт CSV", width=110, height=28,
+                      command=lambda: _export_csv()).pack(side="right", padx=(0, 8))
 
         # ── таблица ───────────────────────────────────────────────────────────
         HDRS = ("Запрос", "Запусков", "Ошибок", "Ср. время (мс)",
@@ -4315,6 +4317,37 @@ class MainWindow(ctk.CTk):
         scroll = ctk.CTkScrollableFrame(dlg, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         scroll.grid_columnconfigure(0, weight=1)
+
+        def _export_csv():
+            import csv
+            path = filedialog.asksaveasfilename(
+                parent=dlg,
+                defaultextension=".csv",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+                title="Сохранить статистику как CSV",
+            )
+            if not path:
+                return
+            rows = self.stats_manager.get_summary(limit=50)
+            dm = self.data_manager
+            try:
+                with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(HDRS)
+                    for row in rows:
+                        qname = dm.get_query_display_name(row["query_file"]) or row["query_file"]
+                        writer.writerow([
+                            qname,
+                            row["total_runs"],
+                            row["error_count"],
+                            f'{row["avg_ms"]:.0f}',
+                            f'{row["max_ms"]:.0f}',
+                            f'{row["avg_rows"]:.0f}',
+                            row["last_run"] or "",
+                        ])
+            except OSError as e:
+                from dialogs import messagebox as _mb
+                _mb.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}", parent=dlg)
 
         def _refresh(clear: bool = False):
             if clear:

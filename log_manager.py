@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
@@ -13,10 +12,6 @@ class LogManager:
         self.log_file = log_file
         self.settings_file = settings_file
         self.logs: List[Dict[str, Any]] = []
-        self._pending = 0          # unsaved records
-        self._flush_every = 50     # flush after N non-error entries
-        self._flush_interval = 10  # flush after N seconds even if _flush_every not reached
-        self._last_flush_time = time.monotonic()
         self._ensure_log_dir()
         self.load_logs()
         
@@ -38,10 +33,7 @@ class LogManager:
             "message": message
         }
         self.logs.append(log_entry)
-        self._pending += 1
-        time_overdue = (time.monotonic() - self._last_flush_time) >= self._flush_interval
-        if level == "ERROR" or self._pending >= self._flush_every or time_overdue:
-            self.save_logs()
+        self.save_logs()
         logging.log(getattr(logging, level, logging.INFO), f"[{timestamp}] {level}: {message}")
 
     def get_logs(self) -> List[Dict[str, Any]]:
@@ -73,8 +65,6 @@ class LogManager:
         try:
             with open(self.log_file, 'w', encoding='utf-8') as f:
                 json.dump(self.logs, f, ensure_ascii=False, indent=4)
-            self._pending = 0
-            self._last_flush_time = time.monotonic()
         except IOError as e:
             logging.error(f"Ошибка сохранения логов: {e}")
 

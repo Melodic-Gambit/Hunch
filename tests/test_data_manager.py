@@ -119,3 +119,62 @@ def test_delete_query_name(dm):
     dm.set_query_display_name("r.sql", "Report")
     dm.delete_query_name("r.sql")
     assert dm.get_query_display_name("r.sql") == "r"
+
+
+# ── _sanitize_name ────────────────────────────────────────────────────────────
+
+def test_sanitize_name_replaces_forbidden_chars():
+    forbidden = r'/*?:"<>|\\'
+    for ch in forbidden:
+        result = DataManager._sanitize_name(f"name{ch}test")
+        assert "_" in result, f"символ {ch!r} не заменён"
+        assert ch not in result
+
+
+def test_sanitize_name_safe_chars_unchanged():
+    assert DataManager._sanitize_name("valid-name_123") == "valid-name_123"
+
+
+def test_sanitize_name_empty_string():
+    assert DataManager._sanitize_name("") == ""
+
+
+# ── add_new_db: граничные случаи ─────────────────────────────────────────────
+
+def test_add_db_empty_name_creates_dot_json(dm, tmp_path):
+    ok = dm.add_new_db("")
+    assert ok is True
+    # _sanitize_name("") = "" → filename = ".json"
+    assert os.path.exists(str(tmp_path / "config" / ".json"))
+
+
+def test_add_db_user_config_overrides_defaults(dm, tmp_path):
+    ok = dm.add_new_db("override_test", {"database_type": "postgresql", "port": 9999})
+    assert ok is True
+    data = json.loads(open(str(tmp_path / "config" / "override_test.json")).read())
+    assert data["database_type"] == "postgresql"
+    assert data["port"] == 9999
+
+
+def test_add_db_defaults_fill_missing_fields(dm, tmp_path):
+    dm.add_new_db("partial", {"database_type": "mysql"})
+    data = json.loads(open(str(tmp_path / "config" / "partial.json")).read())
+    # Поля, не переданные пользователем, заполнены дефолтами
+    assert "host" in data
+    assert "username" in data
+
+
+# ── add_new_query: отсутствующая директория ───────────────────────────────────
+
+def test_add_query_creates_queries_dir_if_missing(tmp_path):
+    queries_dir = str(tmp_path / "does_not_exist" / "queries")
+    dm = DataManager(
+        config_dir=str(tmp_path / "config"),
+        queries_dir=queries_dir,
+        settings_file=str(tmp_path / "settings.json"),
+    )
+    # queries_dir создаётся в __init__ через _ensure_directory
+    assert os.path.isdir(queries_dir)
+    ok = dm.add_new_query("q", "SELECT 1")
+    assert ok is True
+    assert os.path.exists(os.path.join(queries_dir, "q.sql"))
