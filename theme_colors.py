@@ -1,6 +1,6 @@
 """Централизованный модуль акцентных цветов темы.
 
-Читается из settings.json один раз при импорте.
+main.py вызывает load_from_settings(path) явно до создания MainWindow.
 Вызывайте update() после смены темы — все последующие обращения
 к accent() / hover() / dark() вернут актуальные значения.
 """
@@ -77,6 +77,3 @@ def build_theme_file(a: str, h: str, d: str) -> str:
         return out
     except Exception:
         return _resource_path("teal.json")
-
-
-load_from_settings()

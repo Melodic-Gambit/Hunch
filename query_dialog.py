@@ -92,6 +92,7 @@ class QueryDialog(ctk.CTkToplevel):
         self.result = None
 
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(5, weight=1)

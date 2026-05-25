@@ -605,6 +605,7 @@ class VisualizationSettingsDialog(ctk.CTkToplevel):
         self.title("Настройки визуализации")
         self.resizable(False, False)
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.result: Optional[dict] = None
         self._columns      = columns
         self._configs      = {c: dict(current_configs.get(c, {})) for c in columns}
@@ -1154,6 +1155,7 @@ class FrameEditDialog(ctk.CTkToplevel):
         self.title("Настройки фрейма")
         self.resizable(False, False)
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.result = None  # (query_name, render_type, timer_anim, timer_color, run_now: bool) | None
         self._query_names        = query_names
         self._current_query      = current_query
@@ -1831,6 +1833,7 @@ class BulkIntervalDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.result: Optional[int] = None
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.grab_set()
         self._build(title)
         self.after(50, self._center)
@@ -2054,6 +2057,7 @@ class _WidgetVizDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.minsize(400, 360)
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.grab_set()
         self.grid_columnconfigure(0, weight=1)
 
@@ -4333,12 +4337,12 @@ class MainWindow(ctk.CTk):
 
     def _edit_db_by_name(self, name: str):
         self._selected_connection_name = name
-        filename = self.get_filename_by_display_name(name, "config", ".json")
+        filename = self.get_filename_by_display_name(name, self.data_manager.config_dir, ".json")
         if not filename:
             messagebox.showwarning("Предупреждение", "Файл подключения не найден")
             return
 
-        config_path = os.path.join("config", filename)
+        config_path = os.path.join(self.data_manager.config_dir, filename)
         try:
             with open(config_path, encoding="utf-8") as f:
                 config = json.load(f)
@@ -4408,7 +4412,7 @@ class MainWindow(ctk.CTk):
                 messagebox.showerror("Ошибка", f"'{name}' уже существует")
 
     def _delete_db_by_name(self, name: str):
-        fname = self.get_filename_by_display_name(name, "config", ".json")
+        fname = self.get_filename_by_display_name(name, self.data_manager.config_dir, ".json")
         if not fname:
             return
         if messagebox.askyesno("Подтверждение", f"Удалить '{name}'?"):
@@ -4835,12 +4839,12 @@ class MainWindow(ctk.CTk):
 
     def _edit_query_by_name(self, name: str):
         self._selected_query_name = name
-        filename = self.get_filename_by_display_name(name, "queries", ".sql")
+        filename = self.get_filename_by_display_name(name, self.data_manager.queries_dir, ".sql")
         if not filename:
             messagebox.showwarning("Предупреждение", "Файл запроса не найден")
             return
 
-        query_path = os.path.join("queries", filename)
+        query_path = os.path.join(self.data_manager.queries_dir, filename)
         try:
             with open(query_path, encoding="utf-8") as f:
                 sql = f.read()
@@ -4959,7 +4963,7 @@ class MainWindow(ctk.CTk):
             return {}
 
     def _delete_query_by_name(self, name: str):
-        fname = self.get_filename_by_display_name(name, "queries", ".sql")
+        fname = self.get_filename_by_display_name(name, self.data_manager.queries_dir, ".sql")
         if not fname:
             return
         if messagebox.askyesno("Подтверждение", f"Удалить '{name}'?"):
