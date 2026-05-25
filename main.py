@@ -51,23 +51,36 @@ def _read_version() -> str:
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()  # обязателен для PyInstaller + multiprocessing/matplotlib
-    from setup_dirs import create_directories
-    create_directories()
 
     if getattr(sys, "frozen", False):
         _appdata_dir = os.path.join(os.environ.get("APPDATA", ""), "Hunch")
         os.makedirs(_appdata_dir, exist_ok=True)
+        _exe_dir = os.path.dirname(sys.executable)
+        import shutil
+        # Migrate settings.json
         _new_settings = os.path.join(_appdata_dir, "settings.json")
-        _old_settings = os.path.join(os.path.dirname(sys.executable), "settings.json")
+        _old_settings = os.path.join(_exe_dir, "settings.json")
         if not os.path.exists(_new_settings) and os.path.exists(_old_settings):
-            import shutil
             try:
                 shutil.copy2(_old_settings, _new_settings)
             except OSError:
                 pass
+        # Migrate runtime dirs (config, queries, logs) on first run with new layout
+        for _sub in ("config", "queries", "logs"):
+            _old_sub = os.path.join(_exe_dir, _sub)
+            _new_sub = os.path.join(_appdata_dir, _sub)
+            if os.path.isdir(_old_sub) and not os.path.isdir(_new_sub):
+                try:
+                    shutil.copytree(_old_sub, _new_sub)
+                except OSError:
+                    pass
         _settings_path = _new_settings
     else:
+        _appdata_dir = None
         _settings_path = "settings.json"
+
+    from setup_dirs import create_directories
+    create_directories(base=_appdata_dir or "")
 
     _settings = SettingsManager(_settings_path)
     ctk.set_appearance_mode(_settings.get_setting("theme", "dark"))
@@ -80,7 +93,7 @@ if __name__ == "__main__":
     ctk.set_default_color_theme(theme_path)
 
     VERSION = _read_version()
-    app = MainWindow(version=VERSION)
+    app = MainWindow(version=VERSION, appdata_dir=_appdata_dir)
     try:
         app.iconbitmap(resource_path("Hunch.ico"))
     except Exception:
