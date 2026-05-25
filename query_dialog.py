@@ -78,7 +78,6 @@ class QueryDialog(ctk.CTkToplevel):
                  settings_manager       = None):
         super().__init__(parent)
         self.withdraw()
-        self.attributes('-alpha', 0)
         self._edit_mode        = initial_name is not None
         self._db_manager       = db_manager
         self._db_name_map      = db_name_map or {}
@@ -510,10 +509,20 @@ class QueryDialog(ctk.CTkToplevel):
 
         self.result = (name, db, sql, interval, alert_on_change, alert_threshold,
                        self._is_widget_var.get(), cron_schedule)
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _on_cancel(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _copy_focused(self, event=None):
         w = self.focus_get()
@@ -553,6 +562,5 @@ class QueryDialog(ctk.CTkToplevel):
         x = px + (pw - w) // 2
         y = py + (ph - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
-        self.attributes('-alpha', 1)
         self.deiconify()
         self.grab_set()
