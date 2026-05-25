@@ -164,8 +164,10 @@ class DataManager:
         if os.path.exists(filepath):
             return False
         self._ensure_directory(self.queries_dir)
-        with open(filepath, 'w', encoding='utf-8') as f:
+        tmp = filepath + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
             f.write(query)
+        os.replace(tmp, filepath)
         return True
 
     def delete_query(self, name: str) -> bool:

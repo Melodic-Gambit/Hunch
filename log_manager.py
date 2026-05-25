@@ -91,9 +91,11 @@ class LogManager:
 
     def save_logs(self):
         try:
-            with open(self.log_file, 'w', encoding='utf-8') as f:
+            tmp = self.log_file + ".tmp"
+            with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(self.logs, f, ensure_ascii=False, indent=4)
-        except IOError as e:
+            os.replace(tmp, self.log_file)
+        except OSError as e:
             logging.error(f"Ошибка сохранения логов: {e}")
 
     # ── ротация ───────────────────────────────────────────────────────────────

@@ -61,10 +61,10 @@ Name: "{userappdata}\{#MyAppName}"
 Type: filesandordirs; Name: "{userappdata}\{#MyAppName}"
 
 [Run]
-; Запустить приложение после установки (опционально)
+; Запустить приложение после установки
 Filename: "{app}\{#MyAppExeName}"; \
   Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; \
-  Flags: nowait postinstall skipifsilent
+  Flags: nowait runmaximized
 
 [UninstallRun]
 ; Ничего дополнительного при удалении не требуется

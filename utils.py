@@ -109,8 +109,10 @@ def save_sql_query(query_name: str, query: str, queries_dir: str = "queries"):
     if not os.path.exists(queries_dir):
         os.makedirs(queries_dir)
     query_path = os.path.join(queries_dir, f"{query_name}.sql")
-    with open(query_path, 'w', encoding='utf-8') as f:
+    tmp = query_path + ".tmp"
+    with open(tmp, 'w', encoding='utf-8') as f:
         f.write(query)
+    os.replace(tmp, query_path)
 
 def list_sql_queries(queries_dir: str = "queries") -> List[str]:
     """Возвращает список доступных SQL-запросов"""
