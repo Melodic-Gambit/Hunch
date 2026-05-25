@@ -44,6 +44,10 @@ class ResultTable(ctk.CTkFrame):
         self._tree.bind("<Control-c>",     self._copy_row)
         self._tree.bind("<Control-C>",     self._copy_row)
         self._tree.bind("<Control-KeyPress>", self._on_ctrl_keypress)
+        self._tree.bind("<Prior>", lambda e: self._page_prev()  or "break")
+        self._tree.bind("<Next>",  lambda e: self._page_next()  or "break")
+        self._tree.bind("<Home>",  lambda e: self._page_first() or "break")
+        self._tree.bind("<End>",   lambda e: self._page_last()  or "break")
 
         # ── pagination bar (row=2, скрыта по умолчанию) ──────────────────────
         self._pag_bar = ctk.CTkFrame(self, fg_color="transparent", height=1)
@@ -164,6 +168,17 @@ class ResultTable(ctk.CTkFrame):
     def _page_next(self):
         if self._current_page < self._total_pages() - 1:
             self._current_page += 1
+            self._render()
+
+    def _page_first(self):
+        if self._current_page != 0:
+            self._current_page = 0
+            self._render()
+
+    def _page_last(self):
+        last = self._total_pages() - 1
+        if self._current_page != last:
+            self._current_page = last
             self._render()
 
     def _render(self):

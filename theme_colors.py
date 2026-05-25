@@ -20,9 +20,9 @@ def _resource_path(filename: str) -> str:
     return os.path.join(base, filename)
 
 
-def load_from_settings():
+def load_from_settings(path: str = "settings.json"):
     try:
-        with open("settings.json", "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             ct = json.load(f).get("custom_theme") or {}
         a = (ct.get("accent") or "#0D9488").strip().upper()
         h = (ct.get("hover")  or "#0B7A72").strip().upper()

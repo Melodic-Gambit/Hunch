@@ -85,6 +85,7 @@ if __name__ == "__main__":
     _settings = SettingsManager(_settings_path)
     ctk.set_appearance_mode(_settings.get_setting("theme", "dark"))
 
+    theme_colors.load_from_settings(_settings_path)
     a = theme_colors.accent()
     if a != "#0D9488":
         theme_path = theme_colors.build_theme_file(a, theme_colors.hover(), theme_colors.dark())

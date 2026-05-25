@@ -243,7 +243,9 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
     # ── обработчики ──────────────────────────────────────────────────────────
 
     def _on_db_type_changed(self, value=None):
-        is_sqlite = self.db_type_combo.get().strip().lower() == "sqlite"
+        db_type   = self.db_type_combo.get().strip().lower()
+        is_sqlite = db_type == "sqlite"
+        is_mysql  = db_type == "mysql"
         widget_map = {
             "host":     self.host_entry,
             "port":     self._port_wrap,
@@ -251,7 +253,7 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
             "password": self.password_entry,
             "charset":  self.charset_combo,
         }
-        for key in self._SQLITE_HIDDEN:
+        for key in self._SQLITE_HIDDEN - {"charset"}:
             lbl = self._field_labels[key]
             wgt = widget_map[key]
             if is_sqlite:
@@ -260,6 +262,11 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
             else:
                 lbl.grid()
                 wgt.grid()
+        for w in (self._field_labels["charset"], self.charset_combo):
+            if is_mysql:
+                w.grid()
+            else:
+                w.grid_remove()
         if self.winfo_ismapped():
             self.update_idletasks()
             new_h = self.winfo_reqheight()

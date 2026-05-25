@@ -8693,6 +8693,12 @@ class MainWindow(ctk.CTk):
                 latest[page_type] = num
                 self.settings_manager.set_setting("gf_scraping_latest", latest)
                 self._update_gf_last_scan_display(latest)
+                # Синхронизируем фоновый cursor: числа ≤ num уже учтены вручную
+                bg_base = dict(self.settings_manager.get_setting(
+                    "gf_scraping_bg_baseline", {}))
+                if bg_base.get(page_type, 0) < num:
+                    bg_base[page_type] = num
+                    self.settings_manager.set_setting("gf_scraping_bg_baseline", bg_base)
 
         # Уведомляем только если хэш изменился (или первое сканирование не считается)
         if old_hash is None or old_hash == new_hash:
@@ -8976,25 +8982,28 @@ class MainWindow(ctk.CTk):
     def _gf_process_bg_results(self, results: dict):
         """Обрабатывает результаты фоновой проверки в главном потоке.
 
-        Сравнивает с gf_scraping_latest (значения из «Последние изменения»
-        — устанавливаются только ручным парсингом через _gf_service_notify).
+        Порог сравнения = max(gf_scraping_latest, gf_scraping_bg_baseline).
+        gf_scraping_latest трогает ТОЛЬКО _gf_service_notify (ручной запуск).
+        gf_scraping_bg_baseline — внутренний cursor фонового сканера, дисплей не меняет.
         """
-        latest = dict(self.settings_manager.get_setting("gf_scraping_latest", {}))
-        found  = dict(self.settings_manager.get_setting("gf_scraping_found_changes", {}))
+        latest  = dict(self.settings_manager.get_setting("gf_scraping_latest", {}))
+        bg_base = dict(self.settings_manager.get_setting("gf_scraping_bg_baseline", {}))
+        found   = dict(self.settings_manager.get_setting("gf_scraping_found_changes", {}))
         has_new = False
 
         for page_type, numbers in results.items():
-            lbl       = "ОКВЭД" if page_type == "okved" else "ОКПД"
-            saved_max = latest.get(page_type)
+            lbl = "ОКВЭД" if page_type == "okved" else "ОКПД"
+            # Порог = наибольший из ручного baseline и фонового cursor
+            _cands   = [x for x in (latest.get(page_type), bg_base.get(page_type))
+                        if x is not None]
+            saved_max = max(_cands) if _cands else None
 
             if saved_max is None:
-                # Первое обнаружение — фиксируем базовую точку, found_changes не трогаем.
-                # Базовую точку устанавливает только ручной парсинг («Запустить парсинг»);
-                # фоновый мониторинг не должен показывать «найденными» номера старше baseline.
+                # Первое обнаружение — фиксируем фоновый cursor, «Последние изменения» не трогаем.
+                # Числа старше baseline не считаются «найденными».
                 baseline = max(numbers)
-                latest[page_type] = baseline
-                self.settings_manager.set_setting("gf_scraping_latest", latest)
-                self._update_gf_last_scan_display(latest)
+                bg_base[page_type] = baseline
+                self.settings_manager.set_setting("gf_scraping_bg_baseline", bg_base)
                 self.log_manager.add_log(
                     f"[GF.Scraping] {lbl}: базовая точка установлена автоматически → {baseline}",
                     "INFO")
@@ -9008,12 +9017,11 @@ class MainWindow(ctk.CTk):
             if new_nums:
                 has_new = True
                 found[page_type] = new_nums
-                # Обновляем baseline чтобы следующая проверка не показывала те же числа повторно
+                # Обновляем фоновый cursor чтобы следующая проверка не показывала те же числа
                 new_max = max(new_nums)
-                if latest.get(page_type, 0) < new_max:
-                    latest[page_type] = new_max
-                    self.settings_manager.set_setting("gf_scraping_latest", latest)
-                    self._update_gf_last_scan_display(latest)
+                if bg_base.get(page_type, 0) < new_max:
+                    bg_base[page_type] = new_max
+                    self.settings_manager.set_setting("gf_scraping_bg_baseline", bg_base)
             # else: новых нет — found_changes не трогаем
 
         # Сохраняем актуальное состояние и всегда обновляем отображение
