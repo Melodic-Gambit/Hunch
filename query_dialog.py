@@ -64,6 +64,8 @@ _RAISE_ORDER = ("keyword", "function", "number", "string", "comment_line", "comm
 class QueryDialog(ctk.CTkToplevel):
     """Модальное окно добавления / редактирования SQL-запроса."""
 
+    _deactivate_windows_window_header_manipulation = True
+
     def __init__(self, parent, db_names: list,
                  initial_name:     str  = None,
                  initial_db:       str  = None,
