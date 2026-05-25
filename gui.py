@@ -757,7 +757,7 @@ class VisualizationSettingsDialog(ctk.CTkToplevel):
         if not self._columns:
             ctk.CTkLabel(self, text="Нет колонок. Сначала выполните запрос.",
                          wraplength=300).pack(padx=20, pady=20)
-            ctk.CTkButton(self, text="Закрыть", command=self.destroy).pack(pady=(0, 10))
+            ctk.CTkButton(self, text="Закрыть", command=self._close).pack(pady=(0, 10))
             return
 
         scroll_h = min(520, len(self._columns) * 220 + 20)
@@ -775,8 +775,8 @@ class VisualizationSettingsDialog(ctk.CTkToplevel):
                       command=self._save).grid(row=0, column=0, padx=6)
         ctk.CTkButton(btn, text="Отмена", width=90,
                       fg_color=("gray70", "gray30"),
-                      command=self.destroy).grid(row=0, column=1, padx=6)
-        self.bind("<Escape>", lambda _: self.destroy())
+                      command=self._close).grid(row=0, column=1, padx=6)
+        self.bind("<Escape>", lambda _: self._close())
         self.after(0, lambda: setup_paste_bindings(self))
 
     def _build_col_row(self, parent, col: str, idx: int):
@@ -1126,7 +1126,15 @@ class VisualizationSettingsDialog(ctk.CTkToplevel):
 
             result[col] = entry
         self.result = result
+        self._close()
+
+    def _close(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1218,8 +1226,8 @@ class FrameEditDialog(ctk.CTkToplevel):
                       command=self._on_save).grid(row=0, column=1, padx=4)
         ctk.CTkButton(btn_f, text="Отмена", width=90,
                       fg_color=("gray70", "gray30"),
-                      command=self.destroy).grid(row=0, column=2, padx=4)
-        self.bind("<Escape>", lambda _: self.destroy())
+                      command=self._close).grid(row=0, column=2, padx=4)
+        self.bind("<Escape>", lambda _: self._close())
 
     def _query(self) -> Optional[str]:
         v = self._query_var.get()
@@ -1228,12 +1236,20 @@ class FrameEditDialog(ctk.CTkToplevel):
     def _on_run(self):
         self.result = (self._query(), self._render_var.get(),
                        self._timer_anim_var.get(), self._timer_color_var.get(), True)
-        self.destroy()
+        self._close()
 
     def _on_save(self):
         self.result = (self._query(), self._render_var.get(),
                        self._timer_anim_var.get(), self._timer_color_var.get(), False)
+        self._close()
+
+    def _close(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1839,13 +1855,13 @@ class BulkIntervalDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(btn_frame, text="Применить", command=self._on_ok).grid(
             row=0, column=0, padx=(0, 6), sticky="ew")
-        ctk.CTkButton(btn_frame, text="Отмена", command=self.destroy).grid(
+        ctk.CTkButton(btn_frame, text="Отмена", command=self._close).grid(
             row=0, column=1, padx=(6, 0), sticky="ew")
 
         self.grid_columnconfigure(1, weight=1)
         self.entry.focus()
         self.bind("<Return>", lambda _: self._on_ok())
-        self.bind("<Escape>", lambda _: self.destroy())
+        self.bind("<Escape>", lambda _: self._close())
         setup_paste_bindings(self)
 
     def _on_ok(self):
@@ -1861,7 +1877,15 @@ class BulkIntervalDialog(ctk.CTkToplevel):
             messagebox.showerror("Ошибка", "Введите целое число ≥ 0", parent=self)
             return
         self.result = n
+        self._close()
+
+    def _close(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _center(self):
         self.update_idletasks()
@@ -2080,10 +2104,10 @@ class _WidgetVizDialog(ctk.CTkToplevel):
         bf.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(bf, text="Сохранить", command=self._ok).grid(
             row=0, column=0, padx=(0, 6), sticky="ew")
-        ctk.CTkButton(bf, text="Отмена", command=self.destroy).grid(
+        ctk.CTkButton(bf, text="Отмена", command=self._close).grid(
             row=0, column=1, padx=(6, 0), sticky="ew")
 
-        self.bind("<Escape>", lambda _: self.destroy())
+        self.bind("<Escape>", lambda _: self._close())
         self.after(50, self._center)
 
     def _ok(self):
@@ -2106,7 +2130,15 @@ class _WidgetVizDialog(ctk.CTkToplevel):
             "threshold_alert_color_name":  acn,
             "threshold_alert_color":       self._COLORS.get(acn, "#C0392B"),
         }
+        self._close()
+
+    def _close(self):
+        _master = self.master
         self.destroy()
+        try:
+            _master.focus_set()
+        except Exception:
+            pass
 
     def _center(self):
         self.update_idletasks()
@@ -3048,7 +3080,9 @@ class MainWindow(ctk.CTk):
             return
         try:
             if w.winfo_toplevel() is not self:
-                return
+                if self.grab_current() is not None:
+                    return  # модальный диалог блокирует хоткей
+                self.focus_set()  # немодальное окно — перехватываем фокус
         except Exception:
             return
         self.toggle_tabview()
@@ -3126,7 +3160,9 @@ class MainWindow(ctk.CTk):
         w = event.widget
         try:
             if w.winfo_toplevel() is not self:
-                return
+                if self.grab_current() is not None:
+                    return  # модальный диалог блокирует хоткей
+                self.focus_set()  # немодальное окно — перехватываем фокус
         except Exception:
             return
         # Если фокус был в поле ввода — снимаем его перед переходом
@@ -3943,6 +3979,7 @@ class MainWindow(ctk.CTk):
             if i < len(states):
                 panel.set_state(states[i])
         self._save_dashboard_state()
+        self.after(50, self._bind_tab_to_canvas)
 
     # ── Dashboard: блокировка саша ────────────────────────────────────────────
 
@@ -4128,9 +4165,10 @@ class MainWindow(ctk.CTk):
         # ── предварительное чтение файлов ────────────────────────────────────
         _files = None        # None = папка не существует
         _read_error = None
-        if os.path.exists("config"):
+        _cfg_dir = self.data_manager.config_dir
+        if os.path.exists(_cfg_dir):
             try:
-                _files = [f for f in os.listdir("config") if f.endswith(".json")]
+                _files = [f for f in os.listdir(_cfg_dir) if f.endswith(".json")]
             except Exception as e:
                 _read_error = e
                 self.log_manager.add_log(f"Ошибка чтения config: {e}", "ERROR")
@@ -4177,7 +4215,7 @@ class MainWindow(ctk.CTk):
                 r = row_idx + 1
                 display_name = self.data_manager.get_db_display_name(f)
                 try:
-                    with open(os.path.join("config", f),
+                    with open(os.path.join(_cfg_dir, f),
                               encoding="utf-8") as fh:
                         cfg = json.load(fh)
                 except Exception:
@@ -4654,9 +4692,10 @@ class MainWindow(ctk.CTk):
         # ── предварительное чтение файлов ────────────────────────────────────
         _files = None        # None = папка не существует
         _read_error = None
-        if os.path.exists("queries"):
+        _qry_dir = self.data_manager.queries_dir
+        if os.path.exists(_qry_dir):
             try:
-                _files = [f for f in os.listdir("queries") if f.endswith(".sql")]
+                _files = [f for f in os.listdir(_qry_dir) if f.endswith(".sql")]
             except Exception as e:
                 _read_error = e
                 self.log_manager.add_log(f"Ошибка чтения queries: {e}", "ERROR")
@@ -4693,7 +4732,7 @@ class MainWindow(ctk.CTk):
                 r = row_idx + 1
                 display_name = self.data_manager.get_query_display_name(f)
                 try:
-                    with open(os.path.join("queries", f),
+                    with open(os.path.join(_qry_dir, f),
                               encoding="utf-8") as fh:
                         raw = fh.read().replace("\n", " ").strip()
                     sql_preview = raw[:30] + ("..." if len(raw) > 30 else "")
@@ -4899,21 +4938,23 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("Ошибка", f"'{name}' уже существует")
 
     def _get_db_names(self) -> list:
-        if not os.path.exists("config"):
+        _dir = self.data_manager.config_dir
+        if not os.path.exists(_dir):
             return []
         try:
             return [self.data_manager.get_db_display_name(f)
-                    for f in os.listdir("config") if f.endswith(".json")]
+                    for f in os.listdir(_dir) if f.endswith(".json")]
         except Exception:
             return []
 
     def _get_db_name_map(self) -> dict:
         """Возвращает {display_name: config_name_без_расширения} для EXPLAIN-валидации."""
-        if not os.path.exists("config"):
+        _dir = self.data_manager.config_dir
+        if not os.path.exists(_dir):
             return {}
         try:
             return {self.data_manager.get_db_display_name(f): f[:-5]
-                    for f in os.listdir("config") if f.endswith(".json")}
+                    for f in os.listdir(_dir) if f.endswith(".json")}
         except Exception:
             return {}
 
@@ -8641,7 +8682,7 @@ class MainWindow(ctk.CTk):
         hashes[url] = new_hash
         self.settings_manager.set_setting("gf_scraping_hashes", hashes)
 
-        # Обновляем «Последние изменения» — максимальный номер по каждому типу
+        # Обновляем «Последние изменения» — номер из текущего URL
         url_num = url.rstrip("/").split("/")[-1]
         if url_num.isdigit():
             page_type = ("okved" if "okved" in url.lower() else
@@ -8649,9 +8690,8 @@ class MainWindow(ctk.CTk):
             if page_type:
                 num    = int(url_num)
                 latest = dict(self.settings_manager.get_setting("gf_scraping_latest", {}))
-                if latest.get(page_type) is None or num > latest[page_type]:
-                    latest[page_type] = num
-                    self.settings_manager.set_setting("gf_scraping_latest", latest)
+                latest[page_type] = num
+                self.settings_manager.set_setting("gf_scraping_latest", latest)
                 self._update_gf_last_scan_display(latest)
 
         # Уведомляем только если хэш изменился (или первое сканирование не считается)
