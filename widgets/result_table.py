@@ -21,6 +21,7 @@ class ResultTable(ctk.CTkFrame):
         self._sort_col: Optional[int] = None
         self._sort_rev: bool = False
         self._current_page: int = 0
+        self._focused_col: Optional[str] = None
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self._build()
@@ -37,10 +38,12 @@ class ResultTable(ctk.CTkFrame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         self._vsb.grid(row=0, column=1, sticky="ns")
         self._hsb.grid(row=1, column=0, sticky="ew")
-        self._tree.bind("<Button-3>",  self._on_right_click)
-        self._tree.bind("<Button-1>",  self._on_copy_click)
-        self._tree.bind("<Control-c>", self._copy_row)
-        self._tree.bind("<Control-C>", self._copy_row)
+        self._tree.bind("<Button-3>",      self._on_right_click)
+        self._tree.bind("<Button-1>",      self._on_copy_click)
+        self._tree.bind("<Button-1>",      self._on_cell_click, add="+")
+        self._tree.bind("<Control-c>",     self._copy_row)
+        self._tree.bind("<Control-C>",     self._copy_row)
+        self._tree.bind("<Control-KeyPress>", self._on_ctrl_keypress)
 
         # ── pagination bar (row=2, скрыта по умолчанию) ──────────────────────
         self._pag_bar = ctk.CTkFrame(self, fg_color="transparent", height=1)
@@ -200,14 +203,17 @@ class ResultTable(ctk.CTkFrame):
         else:
             self._pag_bar.grid_remove()
 
-        col_ids = ["_copy_"] + [f"c{i}" for i in range(len(self._columns))]
+        col_ids = ["_copy_", "_row_"] + [f"c{i}" for i in range(len(self._columns))]
         self._tree["columns"] = col_ids
 
         self._tree.heading("_copy_", text="⎘")
         self._tree.column("_copy_", width=26, minwidth=26, stretch=False)
 
+        self._tree.heading("_row_", text="№")
+        self._tree.column("_row_", width=40, minwidth=30, stretch=False, anchor="e")
+
         page_rows = self._page_rows()
-        for i, (cid, name) in enumerate(zip(col_ids[1:], self._columns)):
+        for i, (cid, name) in enumerate(zip(col_ids[2:], self._columns)):
             arrow  = (" ▲" if not self._sort_rev else " ▼") if self._sort_col == i else ""
             self._tree.heading(cid, text=name + arrow,
                                command=lambda c=i: self._sort_by(c))
@@ -219,8 +225,9 @@ class ResultTable(ctk.CTkFrame):
         dark = ctk.get_appearance_mode() == "Dark"
         self._tree.tag_configure("r0", background="#2b2b2b" if dark else "#dbdbdb")
         self._tree.tag_configure("r1", background="#333333" if dark else "#d0d0d0")
+        row_offset = self._current_page * _PAGE_SIZE
         for i, row in enumerate(page_rows):
-            vals = ["⎘"] + ["NULL" if v is None else str(v) for v in row]
+            vals = ["⎘", str(row_offset + i + 1)] + ["NULL" if v is None else str(v) for v in row]
             self._tree.insert("", "end", values=vals, tags=(f"r{i % 2}",))
 
     # ── сортировка ────────────────────────────────────────────────────────────
@@ -250,7 +257,7 @@ class ResultTable(ctk.CTkFrame):
         if not item or not col:
             return None
         idx  = int(col.lstrip("#")) - 1
-        if idx == 0:  # _copy_ column
+        if idx <= 1:  # _copy_ or _row_ column
             return None
         vals = self._tree.item(item, "values")
         return vals[idx] if idx < len(vals) else None
@@ -262,7 +269,7 @@ class ResultTable(ctk.CTkFrame):
         self._tree.selection_set(item)
         cell_val = self._cell_value(event)
         all_vals = self._tree.item(item, "values")
-        row_text = "\t".join(str(v) for v in all_vals[1:])  # skip _copy_ column
+        row_text = "\t".join(str(v) for v in all_vals[2:])  # skip _copy_ and _row_ columns
         menu = tk.Menu(self, tearoff=0)
         if cell_val is not None:
             menu.add_command(label="Копировать ячейку",
@@ -285,7 +292,7 @@ class ResultTable(ctk.CTkFrame):
 
     def _copy_row_column_format(self, item):
         vals = self._tree.item(item, "values")
-        actual_vals = vals[1:]  # skip _copy_ column
+        actual_vals = vals[2:]  # skip _copy_ and _row_ columns
         self._clip("\n".join(str(v) for v in actual_vals))
         try:
             self._tree.set(item, "_copy_", "✓")
@@ -300,11 +307,25 @@ class ResultTable(ctk.CTkFrame):
         except Exception:
             pass
 
+    def _on_cell_click(self, event):
+        if self._tree.identify_region(event.x, event.y) == "cell":
+            self._focused_col = self._tree.identify_column(event.x)
+
+    def _on_ctrl_keypress(self, event):
+        if event.keycode == 67:
+            return self._copy_row(event)
+
     def _copy_row(self, event=None):
         sel = self._tree.selection()
-        if sel:
-            vals = self._tree.item(sel[0], "values")
-            self._clip("\t".join(str(v) for v in vals[1:]))  # skip _copy_ column
+        if not sel:
+            return "break"
+        values = self._tree.item(sel[0], "values")
+        if self._focused_col and self._focused_col not in ("#1", "#2"):
+            col_idx = int(self._focused_col.lstrip("#")) - 1
+            if 0 <= col_idx < len(values):
+                self._clip(str(values[col_idx]))
+                return "break"
+        self._clip("\t".join(str(v) for v in values[2:]))  # skip _copy_ and _row_
         return "break"
 
     def _clip(self, text: str):

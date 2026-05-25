@@ -2120,17 +2120,33 @@ class _WidgetVizDialog(ctk.CTkToplevel):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class MainWindow(ctk.CTk):
-    def __init__(self, version: str = "0.0.0"):
+    def __init__(self, version: str = "0.0.0", appdata_dir: str = None):
         super().__init__()
         self.withdraw()                    # скрываем на время сборки UI, показываем в конце __init__
         self._version = version
         self.title(f"Hunch v{version}")
+        self._appdata_dir = appdata_dir
 
-        self.data_manager    = DataManager()
-        self.log_manager     = LogManager()
-        self.db_manager      = DatabaseManager()
-        self.settings_manager = SettingsManager()
-        self.stats_manager   = StatsManager()
+        _d = appdata_dir or ""
+        _p = lambda *parts: os.path.join(_d, *parts) if _d else os.path.join(*parts)
+
+        self.data_manager    = DataManager(
+            config_dir=_p("config"),
+            queries_dir=_p("queries"),
+            settings_file=_p("settings.json"),
+        )
+        self.log_manager     = LogManager(
+            log_file=_p("logs", "app.log"),
+        )
+        self.db_manager      = DatabaseManager(
+            config_dir=_p("config"),
+        )
+        self.settings_manager = SettingsManager(
+            settings_file=_p("settings.json"),
+        )
+        self.stats_manager   = StatsManager(
+            db_path=_p("query_stats.db"),
+        )
 
         self._rotation_after_id      = None   # after-id текущего таймера ротации
         self._rotation_warn_after_id = None   # after-id таймера предупреждения о ротации
@@ -5379,10 +5395,19 @@ class MainWindow(ctk.CTk):
 
     # ── Авто-обновление: кэш ──────────────────────────────────────────────────
 
+    def _cache_path(self) -> str:
+        base = self._appdata_dir or ""
+        return os.path.join(base, "query_cache.json") if base else "query_cache.json"
+
+    def _alert_history_path(self) -> str:
+        base = self._appdata_dir or ""
+        return os.path.join(base, "alert_history.json") if base else "alert_history.json"
+
     def _load_query_cache(self):
         try:
-            if os.path.exists("query_cache.json"):
-                with open("query_cache.json", "r", encoding="utf-8") as f:
+            path = self._cache_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
                     self._query_results = json.load(f)
         except Exception as e:
             self.log_manager.add_log(f"Ошибка загрузки кэша: {e}", "ERROR")
@@ -5401,7 +5426,7 @@ class MainWindow(ctk.CTk):
         try:
             with self._query_results_lock:
                 _snapshot = dict(self._query_results)
-            with open("query_cache.json", "w", encoding="utf-8") as f:
+            with open(self._cache_path(), "w", encoding="utf-8") as f:
                 json.dump(_snapshot, f, ensure_ascii=False,
                           default=self._json_default)
         except Exception as e:
@@ -5411,15 +5436,16 @@ class MainWindow(ctk.CTk):
 
     def _load_alert_history(self):
         try:
-            if os.path.exists("alert_history.json"):
-                with open("alert_history.json", "r", encoding="utf-8") as f:
+            path = self._alert_history_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
                     self._alert_history = json.load(f)
         except Exception:
             self._alert_history = []
 
     def _save_alert_history(self):
         try:
-            with open("alert_history.json", "w", encoding="utf-8") as f:
+            with open(self._alert_history_path(), "w", encoding="utf-8") as f:
                 json.dump(self._alert_history[-500:], f, ensure_ascii=False)
         except Exception:
             pass
