@@ -2736,11 +2736,12 @@ class MainWindow(ctk.CTk):
             return "#212121" if ctk.get_appearance_mode() == "Dark" else "#ebebeb"
 
     def _get_query_names(self) -> list[str]:
-        if not os.path.exists("queries"):
+        qdir = self.data_manager.queries_dir
+        if not os.path.exists(qdir):
             return []
         try:
             return [self.data_manager.get_query_display_name(f)
-                    for f in os.listdir("queries") if f.endswith(".sql")]
+                    for f in os.listdir(qdir) if f.endswith(".sql")]
         except Exception:
             return []
 
@@ -3668,8 +3669,9 @@ class MainWindow(ctk.CTk):
         now  = datetime.datetime.now()
         best = None  # (interval_min, conn_file)
 
-        if os.path.exists("config"):
-            for f in os.listdir("config"):
+        cfg_dir = self.data_manager.config_dir
+        if os.path.exists(cfg_dir):
+            for f in os.listdir(cfg_dir):
                 if not f.endswith(".json"):
                     continue
                 iv = self._get_conn_meta(f).get("update_interval", 0)
@@ -3856,7 +3858,7 @@ class MainWindow(ctk.CTk):
             return
 
         try:
-            with open(os.path.join("queries", query_file), encoding="utf-8") as fh:
+            with open(os.path.join(self.data_manager.queries_dir, query_file), encoding="utf-8") as fh:
                 sql = fh.read()
         except Exception as e:
             panel.set_result([], [])
@@ -4224,6 +4226,9 @@ class MainWindow(ctk.CTk):
                         cfg = json.load(fh)
                 except Exception:
                     cfg = {}
+                if cfg.get("password_in_keyring"):
+                    cfg["password"] = self.db_manager.get_keyring_password(
+                        display_name)
                 pwd    = cfg.get("password", "")
                 masked = "*" * len(pwd) if pwd else "—"
                 bg = ("gray88", "gray20") if row_idx % 2 == 0 \
@@ -4365,7 +4370,7 @@ class MainWindow(ctk.CTk):
 
         if new_name != name:
             new_filename = f"{new_name}.json"
-            new_path = os.path.join("config", new_filename)
+            new_path = os.path.join(self.data_manager.config_dir, new_filename)
             if os.path.exists(new_path):
                 messagebox.showerror("Ошибка", f"Подключение '{new_name}' уже существует")
                 return
@@ -4877,7 +4882,7 @@ class MainWindow(ctk.CTk):
 
         if new_name != name:
             new_filename = f"{new_name}.sql"
-            new_path = os.path.join("queries", new_filename)
+            new_path = os.path.join(self.data_manager.queries_dir, new_filename)
             if os.path.exists(new_path):
                 messagebox.showerror("Ошибка", f"Запрос '{new_name}' уже существует")
                 return
@@ -5026,7 +5031,7 @@ class MainWindow(ctk.CTk):
         def key(f):
             display = self.data_manager.get_db_display_name(f)
             try:
-                with open(os.path.join("config", f), encoding="utf-8") as fh:
+                with open(os.path.join(self.data_manager.config_dir, f), encoding="utf-8") as fh:
                     cfg = json.load(fh)
             except Exception:
                 cfg = {}
@@ -5065,7 +5070,7 @@ class MainWindow(ctk.CTk):
         def key(f):
             display = self.data_manager.get_query_display_name(f)
             try:
-                with open(os.path.join("queries", f), encoding="utf-8") as fh:
+                with open(os.path.join(self.data_manager.queries_dir, f), encoding="utf-8") as fh:
                     raw = fh.read().replace("\n", " ").strip()
                 sql_preview = raw[:30]
             except Exception:
@@ -5107,10 +5112,12 @@ class MainWindow(ctk.CTk):
         if not filename:
             return
         try:
-            with open(os.path.join("config", filename), encoding="utf-8") as fh:
+            with open(os.path.join(self.data_manager.config_dir, filename), encoding="utf-8") as fh:
                 config = json.load(fh)
         except Exception:
             return
+        if config.get("password_in_keyring"):
+            config["password"] = self.db_manager.get_keyring_password(display_name)
         self._conn_statuses[filename] = None
         self._conn_status_testing.add(filename)
         self.refresh_connections_list()
@@ -5148,7 +5155,7 @@ class MainWindow(ctk.CTk):
         if not query_file:
             return
         try:
-            with open(os.path.join("queries", query_file), encoding="utf-8") as fh:
+            with open(os.path.join(self.data_manager.queries_dir, query_file), encoding="utf-8") as fh:
                 sql = fh.read()
         except Exception as e:
             messagebox.showerror("Ошибка", str(e))
@@ -5571,15 +5578,17 @@ class MainWindow(ctk.CTk):
 
     def _start_auto_timers(self):
         """Немедленно выполняет все запросы, затем запускает таймеры."""
-        if os.path.exists("queries"):
-            for f in os.listdir("queries"):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in os.listdir(qdir):
                 if f.endswith(".sql"):
                     self._execute_query_auto(f)
         self._refresh_all_dashboard_panels()
         # Фиксируем момент запуска как «последнее обновление» для подключений с интервалом
         now = datetime.datetime.now()
-        if os.path.exists("config"):
-            for f in os.listdir("config"):
+        cfg_dir = self.data_manager.config_dir
+        if os.path.exists(cfg_dir):
+            for f in os.listdir(cfg_dir):
                 if f.endswith(".json") and \
                         self._get_conn_meta(f).get("update_interval", 0) > 0:
                     self._conn_last_refresh[f] = now
@@ -5603,8 +5612,9 @@ class MainWindow(ctk.CTk):
         self._schedule_all_timers()
 
     def _schedule_all_timers(self):
-        if os.path.exists("queries"):
-            for f in os.listdir("queries"):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in os.listdir(qdir):
                 if f.endswith(".sql"):
                     meta     = self._get_query_meta(f)
                     interval = meta.get("update_interval", 0)
@@ -5613,8 +5623,9 @@ class MainWindow(ctk.CTk):
                         self._schedule_query_cron(f, cron)
                     elif interval > 0:
                         self._schedule_query(f, interval)
-        if os.path.exists("config"):
-            for f in os.listdir("config"):
+        cfg_dir = self.data_manager.config_dir
+        if os.path.exists(cfg_dir):
+            for f in os.listdir(cfg_dir):
                 if f.endswith(".json"):
                     interval = self._get_conn_meta(f).get("update_interval", 0)
                     if interval > 0:
@@ -5679,7 +5690,7 @@ class MainWindow(ctk.CTk):
             conn_file = self._find_conn_file(db_display) if db_display else None
             if not conn_file:
                 return
-            with open(os.path.join("queries", query_file), encoding="utf-8") as fh:
+            with open(os.path.join(self.data_manager.queries_dir, query_file), encoding="utf-8") as fh:
                 sql = fh.read()
         except Exception as e:
             self.log_manager.add_log(
@@ -5804,8 +5815,9 @@ class MainWindow(ctk.CTk):
 
     def _force_refresh_all(self):
         """Принудительно перезапускает выполнение всех запросов."""
-        if os.path.exists("queries"):
-            for f in os.listdir("queries"):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in os.listdir(qdir):
                 if f.endswith(".sql"):
                     self._execute_query_auto(f)
 
@@ -5842,16 +5854,18 @@ class MainWindow(ctk.CTk):
     # ── Авто-обновление: вспомогательные поисковики ───────────────────────────
 
     def _find_query_file(self, query_name: str) -> Optional[str]:
-        if os.path.exists("queries"):
-            for f in os.listdir("queries"):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in os.listdir(qdir):
                 if f.endswith(".sql") and \
                         self.data_manager.get_query_display_name(f) == query_name:
                     return f
         return None
 
     def _find_conn_file(self, db_display: str) -> Optional[str]:
-        if os.path.exists("config"):
-            for f in os.listdir("config"):
+        cfg_dir = self.data_manager.config_dir
+        if os.path.exists(cfg_dir):
+            for f in os.listdir(cfg_dir):
                 if f.endswith(".json") and \
                         self.data_manager.get_db_display_name(f) == db_display:
                     return f
@@ -6874,24 +6888,27 @@ class MainWindow(ctk.CTk):
         if not path:
             return
         try:
+            cfg_dir = self.data_manager.config_dir
+            qdir    = self.data_manager.queries_dir
+            sf      = self.data_manager.settings_file
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
                 # settings.json
-                if os.path.exists("settings.json"):
-                    zf.write("settings.json", "settings.json")
+                if os.path.exists(sf):
+                    zf.write(sf, "settings.json")
                 # config/*.json
-                if os.path.isdir("config"):
-                    for fname in os.listdir("config"):
+                if os.path.isdir(cfg_dir):
+                    for fname in os.listdir(cfg_dir):
                         if fname.endswith(".json"):
-                            zf.write(os.path.join("config", fname),
+                            zf.write(os.path.join(cfg_dir, fname),
                                      os.path.join("config", fname))
                 # queries/*.sql
-                if os.path.isdir("queries"):
-                    for fname in os.listdir("queries"):
+                if os.path.isdir(qdir):
+                    for fname in os.listdir(qdir):
                         if fname.endswith(".sql"):
-                            zf.write(os.path.join("queries", fname),
+                            zf.write(os.path.join(qdir, fname),
                                      os.path.join("queries", fname))
-            count_cfg = len([f for f in (os.listdir("config") if os.path.isdir("config") else []) if f.endswith(".json")])
-            count_qry = len([f for f in (os.listdir("queries") if os.path.isdir("queries") else []) if f.endswith(".sql")])
+            count_cfg = len([f for f in (os.listdir(cfg_dir) if os.path.isdir(cfg_dir) else []) if f.endswith(".json")])
+            count_qry = len([f for f in (os.listdir(qdir) if os.path.isdir(qdir) else []) if f.endswith(".sql")])
             messagebox.showinfo(
                 "Экспорт выполнен",
                 f"Конфигурация сохранена в:\n{path}\n\n"
@@ -6940,11 +6957,12 @@ class MainWindow(ctk.CTk):
                 return
 
             with zipfile.ZipFile(path, "r") as zf:
+                appdata_dir = os.path.dirname(self.data_manager.config_dir)
                 if count_cfg > 0:
-                    os.makedirs("config", exist_ok=True)
+                    os.makedirs(self.data_manager.config_dir, exist_ok=True)
                 if count_qry > 0:
-                    os.makedirs("queries", exist_ok=True)
-                zf.extractall(".")
+                    os.makedirs(self.data_manager.queries_dir, exist_ok=True)
+                zf.extractall(appdata_dir)
 
             # перезагружаем settings и data_manager
             self.settings_manager.settings = self.settings_manager.load_settings()
@@ -7056,8 +7074,9 @@ class MainWindow(ctk.CTk):
             _has_gf = True
 
         widget_files = []
-        if os.path.exists("queries"):
-            for f in sorted(os.listdir("queries")):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in sorted(os.listdir(qdir)):
                 if f.endswith(".sql") and self._get_query_meta(f).get("is_widget"):
                     widget_files.append(f)
 
@@ -7154,8 +7173,9 @@ class MainWindow(ctk.CTk):
             w.destroy()
 
         widget_files = []
-        if os.path.exists("queries"):
-            for f in sorted(os.listdir("queries")):
+        qdir = self.data_manager.queries_dir
+        if os.path.exists(qdir):
+            for f in sorted(os.listdir(qdir)):
                 if f.endswith(".sql") and self._get_query_meta(f).get("is_widget"):
                     widget_files.append(f)
 
@@ -7486,10 +7506,11 @@ class MainWindow(ctk.CTk):
         except ValueError:
             messagebox.showerror("Ошибка", "Введите целое число ≥ 0")
             return
-        if not os.path.exists("config"):
+        cfg_dir = self.data_manager.config_dir
+        if not os.path.exists(cfg_dir):
             return
         updated = 0
-        for f in os.listdir("config"):
+        for f in os.listdir(cfg_dir):
             if f.endswith(".json"):
                 self._set_conn_meta(f, update_interval=interval)
                 updated += 1
@@ -7513,10 +7534,11 @@ class MainWindow(ctk.CTk):
         except ValueError:
             messagebox.showerror("Ошибка", "Введите целое число ≥ 0")
             return
-        if not os.path.exists("queries"):
+        qdir = self.data_manager.queries_dir
+        if not os.path.exists(qdir):
             return
         updated = 0
-        for f in os.listdir("queries"):
+        for f in os.listdir(qdir):
             if f.endswith(".sql"):
                 self._set_query_meta(f, update_interval=interval)
                 updated += 1

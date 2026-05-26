@@ -71,9 +71,11 @@ class LogManager:
         self.save_logs()
 
     def save_logs_to_file(self, filename: str):
-        with open(filename, 'w', encoding='utf-8') as f:
+        tmp = filename + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
             for entry in self.logs:
                 f.write(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}\n")
+        os.replace(tmp, filename)
 
     def load_logs(self):
         if os.path.exists(self.log_file):
