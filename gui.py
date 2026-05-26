@@ -1583,6 +1583,7 @@ class DashboardPanel(ctk.CTkFrame):
 
     def _render_animated(self, rows: list, columns: list, delta_data: dict = None):
         self.result_table.grid_remove()
+        self.result_table.set_data(rows, columns)
         if self._anim_panel is None or not self._anim_panel.winfo_exists():
             self._anim_panel = AnimatedPanel(self)
             self._anim_panel.grid(row=1, column=0, sticky="nsew")
@@ -2371,16 +2372,9 @@ class MainWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.after(300, self._start_auto_timers)
         self.bind("<Alt-F4>", lambda e: self.on_closing(), add="+")
-        _saved_state    = self.settings_manager.get_setting("window_state", "zoomed")
-        _saved_geometry = self.settings_manager.get_setting("window_geometry", None)
-        if _saved_state != "zoomed" and _saved_geometry:
-            self.geometry(_saved_geometry)
         self.deiconify()
         self._refresh_titlebar(cur_theme == "dark")
-        if _saved_state == "zoomed":
-            self.after(100, lambda: self.state('zoomed'))
-        else:
-            self.after(100, self.deiconify)
+        self.after(100, lambda: self.state('zoomed'))
 
         if self.settings_manager.get_setting("check_updates", True):
             self.after(3000, self._check_for_updates)
@@ -2685,15 +2679,6 @@ class MainWindow(ctk.CTk):
             except Exception:
                 pass
         # Каждое сохранение в отдельном try — гарантируем, что все выполнятся
-        try:
-            _state = self.state()
-            if _state == "iconic":
-                _state = "normal"
-            self.settings_manager.set_setting("window_state", _state)
-            if _state != "zoomed":
-                self.settings_manager.set_setting("window_geometry", self.geometry())
-        except Exception:
-            pass
         try:
             self._save_query_cache()
         except Exception:

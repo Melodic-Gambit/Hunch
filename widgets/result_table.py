@@ -33,11 +33,9 @@ class ResultTable(ctk.CTkFrame):
         self._vsb = ctk.CTkScrollbar(self, command=self._tree.yview)
         self._hsb = ctk.CTkScrollbar(self, orientation="horizontal",
                                       command=self._tree.xview)
-        self._tree.configure(yscrollcommand=self._vsb.set,
-                             xscrollcommand=self._hsb.set)
+        self._tree.configure(yscrollcommand=self._on_vsb_set,
+                             xscrollcommand=self._on_hsb_set)
         self._tree.grid(row=0, column=0, sticky="nsew")
-        self._vsb.grid(row=0, column=1, sticky="ns")
-        self._hsb.grid(row=1, column=0, sticky="ew")
         self._tree.bind("<Button-3>",      self._on_right_click)
         self._tree.bind("<Button-1>",      self._on_copy_click)
         self._tree.bind("<Button-1>",      self._on_cell_click, add="+")
@@ -91,6 +89,20 @@ class ResultTable(ctk.CTkFrame):
             text_color=("#808080", theme_colors.accent()),
         )
         self._render()
+
+    def _on_vsb_set(self, first, last):
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            self._vsb.grid_remove()
+        else:
+            self._vsb.grid(row=0, column=1, sticky="ns")
+        self._vsb.set(first, last)
+
+    def _on_hsb_set(self, first, last):
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            self._hsb.grid_remove()
+        else:
+            self._hsb.grid(row=1, column=0, sticky="ew")
+        self._hsb.set(first, last)
 
     # ── стиль (обновляется при смене темы) ───────────────────────────────────
 
@@ -194,8 +206,6 @@ class ResultTable(ctk.CTkFrame):
         ResultTable._apply_style()
         self._empty_lbl.grid_remove()
         self._tree.grid(row=0, column=0, sticky="nsew")
-        self._vsb.grid(row=0, column=1, sticky="ns")
-        self._hsb.grid(row=1, column=0, sticky="ew")
 
         total = self._total_pages()
         if total > 1:
