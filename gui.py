@@ -30,6 +30,7 @@ from widgets.result_table import ResultTable
 from widgets.chart import _SimpleChartCanvas
 from widgets.gf_scraping_module import GFScrapingWindow, _gf_check_url_hash, _gf_fetch_latest_numbers
 from stats_manager import StatsManager
+from reminders_manager import RemindersManager
 from widgets.gf_service_settings_dialog import GFServiceSettingsDialog
 from widgets.dashboard_layout_dialog import DashboardLayoutDialog, DASHBOARD_TEMPLATES
 import theme_colors
@@ -2184,6 +2185,9 @@ class MainWindow(ctk.CTk):
         self.stats_manager   = StatsManager(
             db_path=_p("query_stats.db"),
         )
+        self.reminders_manager = RemindersManager(
+            db_path=_p("reminders.db"),
+        )
 
         self._rotation_after_id      = None   # after-id текущего таймера ротации
         self._rotation_warn_after_id = None   # after-id таймера предупреждения о ротации
@@ -2223,6 +2227,8 @@ class MainWindow(ctk.CTk):
         self._notifications:          list = []   # [{id, query_name, timestamp, read}]
         self._notification_counter:   int  = 0
         self._notif_rotation_after_id       = None
+
+        self._reminder_check_after_id = None
 
         # GF.Scraping scheduler after-IDs
         self._gf_daily_after_id = None
@@ -2339,9 +2345,10 @@ class MainWindow(ctk.CTk):
         self.frame_appearance      = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_notifications   = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_services        = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_reminders       = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         for f in (self.frame_dashboard, self.frame_connections, self.frame_queries,
                   self.frame_logs, self.frame_appearance, self.frame_notifications,
-                  self.frame_services):
+                  self.frame_services, self.frame_reminders):
             f.grid(row=0, column=0, sticky="nsew")
 
         self.setup_dashboard_tab()
@@ -2351,6 +2358,7 @@ class MainWindow(ctk.CTk):
         self.setup_appearance_tab()
         self.setup_notifications_tab()
         self.setup_services_tab()
+        self.setup_reminders_tab()
 
         self._refresh_header_widgets()
 
@@ -2765,6 +2773,7 @@ class MainWindow(ctk.CTk):
             "🔗 Подключения",
             "📝 Запросы",
             "⚙️ Настройки",
+            "⏰ Напоминания",
             "🔔 Уведомления",
             "🛠 Сервисы",
         ]
@@ -3168,6 +3177,7 @@ class MainWindow(ctk.CTk):
             "🔗 Подключения":     self.frame_connections,
             "📝 Запросы":         self.frame_queries,
             "⚙️ Настройки":       self.frame_appearance,
+            "⏰ Напоминания":      self.frame_reminders,
             "🔔 Уведомления":     self.frame_notifications,
             "🛠 Сервисы":         self.frame_services,
         }
@@ -3178,6 +3188,8 @@ class MainWindow(ctk.CTk):
             self.after(0, self._refresh_notif_query_checkboxes)
         if value == "🔔 Уведомления":
             self._mark_all_read()
+        if value == "⏰ Напоминания":
+            self._refresh_reminders_list()
         for name, tb in self.toolbars.items():
             if name == value and tb.winfo_children():
                 tb.grid()
@@ -4625,15 +4637,18 @@ class MainWindow(ctk.CTk):
         _refresh()
 
         def _center():
-            dlg.update_idletasks()
-            pw = self.winfo_width(); ph = self.winfo_height()
-            px = self.winfo_rootx(); py = self.winfo_rooty()
-            w  = dlg.winfo_reqwidth()
-            h  = dlg.winfo_reqheight()
-            dlg.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
-            dlg.deiconify()
-            dlg.grab_set()
-            dlg.lift()
+            try:
+                dlg.update_idletasks()
+                pw = self.winfo_width(); ph = self.winfo_height()
+                px = self.winfo_rootx(); py = self.winfo_rooty()
+                w  = dlg.winfo_reqwidth()
+                h  = dlg.winfo_reqheight()
+                dlg.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+                dlg.deiconify()
+                dlg.grab_set()
+                dlg.lift()
+            except Exception:
+                pass
 
         dlg.after(60, _center)
 
@@ -5579,6 +5594,7 @@ class MainWindow(ctk.CTk):
                     self._conn_last_refresh[f] = now
         self._schedule_all_timers()
         self._gf_schedule_start()
+        self._start_reminder_check()
 
     def _restart_auto_timers(self):
         """Отменяет старые таймеры и перезапускает по актуальным настройкам."""
@@ -7844,6 +7860,256 @@ class MainWindow(ctk.CTk):
 
         self.after(300, lambda: self._svc_setup_drag(scroll))
 
+    # ── Напоминания (FEAT-16) ─────────────────────────────────────────────────
+
+    def setup_reminders_tab(self):
+        f = self.frame_reminders
+        f.grid_columnconfigure(0, weight=1)
+        f.grid_rowconfigure(1, weight=1)
+
+        # Заголовок + кнопка «Добавить»
+        hdr = ctk.CTkFrame(f, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 6))
+        hdr.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(hdr, text="Напоминания",
+                     font=ctk.CTkFont(size=15, weight="bold")).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(hdr, text="+ Добавить", width=110, height=28,
+                      command=lambda: self._open_add_reminder_dialog()
+                      ).grid(row=0, column=1, padx=(8, 0))
+
+        # Прокручиваемый список
+        self._rem_scroll = ctk.CTkScrollableFrame(f, fg_color="transparent")
+        self._rem_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self._rem_scroll.grid_columnconfigure(0, weight=1)
+
+        self._rem_empty_lbl = ctk.CTkLabel(
+            self._rem_scroll, text="Нет напоминаний",
+            font=ctk.CTkFont(size=13),
+            text_color=("gray55", "gray55"))
+
+        self._refresh_reminders_list()
+
+    def _refresh_reminders_list(self):
+        if not hasattr(self, "_rem_scroll"):
+            return
+        for w in self._rem_scroll.winfo_children():
+            w.destroy()
+
+        items = self.reminders_manager.list_all()
+        if not items:
+            self._rem_empty_lbl = ctk.CTkLabel(
+                self._rem_scroll, text="Нет напоминаний",
+                font=ctk.CTkFont(size=13),
+                text_color=("gray55", "gray55"))
+            self._rem_empty_lbl.grid(row=0, column=0, pady=40)
+            return
+
+        dark = ctk.get_appearance_mode() == "Dark"
+        for idx, r in enumerate(items):
+            enabled = bool(r["enabled"])
+            bg = ("gray85", "gray22") if dark else ("gray88", "gray22")
+            card = ctk.CTkFrame(self._rem_scroll,
+                                corner_radius=8,
+                                fg_color=("gray88", "gray22"))
+            card.grid(row=idx, column=0, sticky="ew", padx=4, pady=(0, 4))
+            card.grid_columnconfigure(1, weight=1)
+
+            # Тип-иконка
+            icon = "📅" if r["type"] == "once" else "🔁"
+            ctk.CTkLabel(card, text=icon,
+                         font=ctk.CTkFont(size=16)).grid(
+                row=0, column=0, rowspan=2, padx=(10, 6), pady=6)
+
+            # Комментарий
+            color = ("gray10", "gray90") if enabled else ("gray55", "gray55")
+            ctk.CTkLabel(card, text=r["comment"], anchor="w",
+                         font=ctk.CTkFont(size=13),
+                         text_color=color).grid(
+                row=0, column=1, sticky="ew", padx=(0, 8), pady=(6, 0))
+
+            # Время
+            if r["type"] == "once":
+                time_txt = r["once_dt"] or "—"
+            else:
+                time_txt = f'Ежедневно в {r["daily_hm"]}' if r["daily_hm"] else "—"
+            if not enabled:
+                time_txt += "  ✓ выполнено"
+            ctk.CTkLabel(card, text=time_txt, anchor="w",
+                         font=ctk.CTkFont(size=11),
+                         text_color=("gray50", "gray55")).grid(
+                row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 6))
+
+            # Удалить
+            _rid = r["id"]
+            ctk.CTkButton(card, text="✕", width=28, height=28,
+                          fg_color="transparent",
+                          hover_color=("gray70", "gray35"),
+                          text_color=("gray40", "gray60"),
+                          command=lambda i=_rid: self._delete_reminder(i)
+                          ).grid(row=0, column=2, rowspan=2, padx=(0, 6), pady=6)
+
+    def _delete_reminder(self, reminder_id: int):
+        self.reminders_manager.delete(reminder_id)
+        self._refresh_reminders_list()
+
+    def _open_reminder_for_row(self, prefill_text: str):
+        """Открывает диалог добавления напоминания, предзаполненный значением строки."""
+        self._open_add_reminder_dialog(prefill_text=prefill_text)
+
+    def _open_add_reminder_dialog(self, prefill_text: str = ""):
+        dlg = ctk.CTkToplevel(self)
+        dlg.withdraw()
+        dlg.title("Добавить напоминание")
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        dlg.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(dlg, text="Добавить напоминание",
+                     font=ctk.CTkFont(size=14, weight="bold")
+                     ).grid(row=0, column=0, padx=20, pady=(16, 8), sticky="w")
+
+        # Текст напоминания
+        ctk.CTkLabel(dlg, text="Текст напоминания:", anchor="w"
+                     ).grid(row=1, column=0, padx=20, pady=(0, 2), sticky="w")
+        comment_entry = ctk.CTkEntry(dlg, width=340, placeholder_text="Введите текст…")
+        comment_entry.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+        if prefill_text:
+            comment_entry.insert(0, prefill_text)
+
+        # Тип: однократно / ежедневно
+        type_var = tk.StringVar(value="once")
+        type_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        type_frame.grid(row=3, column=0, padx=20, pady=(0, 6), sticky="w")
+        ctk.CTkRadioButton(type_frame, text="Однократно", variable=type_var,
+                           value="once").grid(row=0, column=0, padx=(0, 16))
+        ctk.CTkRadioButton(type_frame, text="Ежедневно", variable=type_var,
+                           value="daily").grid(row=0, column=1)
+
+        # Дата+время (для однократного)
+        once_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        once_frame.grid(row=4, column=0, padx=20, pady=(0, 4), sticky="w")
+        ctk.CTkLabel(once_frame, text="Дата и время (ГГГГ-ММ-ДД ЧЧ:ММ):",
+                     anchor="w").grid(row=0, column=0, sticky="w")
+        once_entry = ctk.CTkEntry(once_frame, width=200,
+                                  placeholder_text="2026-12-31 09:00")
+        once_entry.grid(row=1, column=0, sticky="w")
+
+        # Время (для ежедневного)
+        daily_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        daily_frame.grid(row=5, column=0, padx=20, pady=(0, 4), sticky="w")
+        ctk.CTkLabel(daily_frame, text="Время (ЧЧ:ММ):",
+                     anchor="w").grid(row=0, column=0, sticky="w")
+        daily_entry = ctk.CTkEntry(daily_frame, width=100, placeholder_text="09:00")
+        daily_entry.grid(row=1, column=0, sticky="w")
+
+        error_lbl = ctk.CTkLabel(dlg, text="", text_color=("#DC2626", "#F87171"),
+                                 font=ctk.CTkFont(size=11), anchor="w")
+        error_lbl.grid(row=6, column=0, padx=20, pady=(0, 4), sticky="w")
+
+        def _toggle_type(*_):
+            if type_var.get() == "once":
+                once_frame.grid()
+                daily_frame.grid_remove()
+            else:
+                once_frame.grid_remove()
+                daily_frame.grid()
+
+        type_var.trace_add("write", _toggle_type)
+        _toggle_type()
+
+        def _save():
+            comment = comment_entry.get().strip()
+            if not comment:
+                error_lbl.configure(text="Введите текст напоминания.")
+                return
+            rtype = type_var.get()
+            if rtype == "once":
+                val = once_entry.get().strip()
+                if not val:
+                    error_lbl.configure(text="Укажите дату и время.")
+                    return
+                try:
+                    datetime.datetime.strptime(val, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    error_lbl.configure(text="Формат: ГГГГ-ММ-ДД ЧЧ:ММ")
+                    return
+                self.reminders_manager.add(comment, "once", once_dt=val)
+            else:
+                val = daily_entry.get().strip()
+                if not val:
+                    error_lbl.configure(text="Укажите время.")
+                    return
+                try:
+                    datetime.datetime.strptime(val, "%H:%M")
+                except ValueError:
+                    error_lbl.configure(text="Формат времени: ЧЧ:ММ")
+                    return
+                self.reminders_manager.add(comment, "daily", daily_hm=val)
+            self._refresh_reminders_list()
+            dlg.destroy()
+
+        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_row.grid(row=7, column=0, pady=(4, 16))
+        ctk.CTkButton(btn_row, text="Сохранить", width=110, command=_save
+                      ).grid(row=0, column=0, padx=(0, 8))
+        ctk.CTkButton(btn_row, text="Отмена", width=80,
+                      fg_color=("gray60", "gray40"),
+                      hover_color=("gray50", "gray30"),
+                      command=dlg.destroy).grid(row=0, column=1)
+
+        def _center():
+            try:
+                dlg.update_idletasks()
+                pw = self.winfo_width()
+                ph = self.winfo_height()
+                w  = dlg.winfo_reqwidth()
+                h  = dlg.winfo_reqheight()
+                dlg.geometry(
+                    f"+{self.winfo_rootx() + (pw - w) // 2}"
+                    f"+{self.winfo_rooty() + (ph - h) // 2}"
+                )
+                dlg.deiconify()
+                dlg.grab_set()
+                dlg.lift()
+            except Exception:
+                pass
+
+        dlg.after(60, _center)
+
+    # ── Шедулер напоминаний ───────────────────────────────────────────────────
+
+    def _start_reminder_check(self):
+        if self._reminder_check_after_id:
+            try:
+                self.after_cancel(self._reminder_check_after_id)
+            except Exception:
+                pass
+        self._check_reminders()
+
+    def _check_reminders(self):
+        try:
+            due = self.reminders_manager.get_due()
+            for r in due:
+                self.reminders_manager.mark_fired(r["id"])
+                self._fire_reminder(r["comment"])
+        except Exception:
+            pass
+        self._reminder_check_after_id = self.after(30_000, self._check_reminders)
+
+    def _fire_reminder(self, comment: str):
+        if _WINOTIFY_OK:
+            try:
+                n = _WinNotification(
+                    app_id="Hunch",
+                    title="⏰ Напоминание",
+                    msg=comment,
+                    duration="short",
+                )
+                n.show()
+            except Exception:
+                pass
 
     def _build_service_card_gf_scraping(self, parent):
         # ── логотип ───────────────────────────────────────────────────────────
