@@ -22,6 +22,9 @@ class ResultTable(ctk.CTkFrame):
         self._sort_rev: bool = False
         self._current_page: int = 0
         self._focused_col: Optional[str] = None
+        self._hidden_keys: set = set()
+        self._hidden_rows: dict = {}
+        self._hovered_item: str = ""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self._build()
@@ -39,6 +42,8 @@ class ResultTable(ctk.CTkFrame):
         self._tree.bind("<Button-3>",      self._on_right_click)
         self._tree.bind("<Button-1>",      self._on_copy_click)
         self._tree.bind("<Button-1>",      self._on_cell_click, add="+")
+        self._tree.bind("<Motion>",        self._on_motion)
+        self._tree.bind("<Leave>",         self._on_leave_tree)
         self._tree.bind("<Control-c>",     self._copy_row)
         self._tree.bind("<Control-C>",     self._copy_row)
         self._tree.bind("<Control-KeyPress>", self._on_ctrl_keypress)
@@ -156,11 +161,22 @@ class ResultTable(ctk.CTkFrame):
     # ── данные ───────────────────────────────────────────────────────────────
 
     def set_data(self, rows: list, columns: list):
-        self._rows    = [list(r) for r in rows]
+        all_rows = [list(r) for r in rows]
         self._columns = list(columns)
         self._sort_col = None
         self._sort_rev = False
         self._current_page = 0
+        if self._hidden_keys:
+            visible = []
+            for r in all_rows:
+                key = str(r[0]) if r else ""
+                if key in self._hidden_keys:
+                    self._hidden_rows[key] = r
+                else:
+                    visible.append(r)
+            self._rows = visible
+        else:
+            self._rows = all_rows
         self._render()
 
     def _total_pages(self) -> int:
@@ -228,8 +244,11 @@ class ResultTable(ctk.CTkFrame):
         else:
             self._pag_bar.grid_remove()
 
-        col_ids = ["_copy_", "_row_"] + [f"c{i}" for i in range(len(self._columns))]
+        col_ids = ["_bulb_", "_copy_", "_row_"] + [f"c{i}" for i in range(len(self._columns))]
         self._tree["columns"] = col_ids
+
+        self._tree.heading("_bulb_", text="")
+        self._tree.column("_bulb_", width=24, minwidth=24, stretch=False)
 
         self._tree.heading("_copy_", text="⎘")
         self._tree.column("_copy_", width=26, minwidth=26, stretch=False)
@@ -238,7 +257,7 @@ class ResultTable(ctk.CTkFrame):
         self._tree.column("_row_", width=40, minwidth=30, stretch=False, anchor="e")
 
         page_rows = self._page_rows()
-        for i, (cid, name) in enumerate(zip(col_ids[2:], self._columns)):
+        for i, (cid, name) in enumerate(zip(col_ids[3:], self._columns)):
             arrow  = (" ▲" if not self._sort_rev else " ▼") if self._sort_col == i else ""
             self._tree.heading(cid, text=name + arrow,
                                command=lambda c=i: self._sort_by(c))
@@ -252,7 +271,7 @@ class ResultTable(ctk.CTkFrame):
         self._tree.tag_configure("r1", background="#333333" if dark else "#d0d0d0")
         row_offset = self._current_page * _PAGE_SIZE
         for i, row in enumerate(page_rows):
-            vals = ["⎘", str(row_offset + i + 1)] + ["NULL" if v is None else str(v) for v in row]
+            vals = ["", "⎘", str(row_offset + i + 1)] + ["NULL" if v is None else str(v) for v in row]
             self._tree.insert("", "end", values=vals, tags=(f"r{i % 2}",))
 
     # ── сортировка ────────────────────────────────────────────────────────────
@@ -282,7 +301,7 @@ class ResultTable(ctk.CTkFrame):
         if not item or not col:
             return None
         idx  = int(col.lstrip("#")) - 1
-        if idx <= 1:  # _copy_ or _row_ column
+        if idx <= 2:  # _bulb_, _copy_, _row_ columns
             return None
         vals = self._tree.item(item, "values")
         return vals[idx] if idx < len(vals) else None
@@ -294,7 +313,7 @@ class ResultTable(ctk.CTkFrame):
         self._tree.selection_set(item)
         cell_val = self._cell_value(event)
         all_vals = self._tree.item(item, "values")
-        row_text = "\t".join(str(v) for v in all_vals[2:])  # skip _copy_ and _row_ columns
+        row_text = "\t".join(str(v) for v in all_vals[3:])  # skip _bulb_, _copy_, _row_
         menu = tk.Menu(self, tearoff=0)
         if cell_val is not None:
             menu.add_command(label="Копировать ячейку",
@@ -308,16 +327,19 @@ class ResultTable(ctk.CTkFrame):
 
     def _on_copy_click(self, event):
         col = self._tree.identify_column(event.x)
-        if col != "#1":
-            return
-        item = self._tree.identify_row(event.y)
-        if not item:
-            return
-        self._copy_row_column_format(item)
+        if col == "#1":  # _bulb_ column
+            item = self._tree.identify_row(event.y)
+            if item:
+                self._show_bulb_menu(event, item)
+        elif col == "#2":  # _copy_ column
+            item = self._tree.identify_row(event.y)
+            if not item:
+                return
+            self._copy_row_column_format(item)
 
     def _copy_row_column_format(self, item):
         vals = self._tree.item(item, "values")
-        actual_vals = vals[2:]  # skip _copy_ and _row_ columns
+        actual_vals = vals[3:]  # skip _bulb_, _copy_, _row_ columns
         self._clip("\n".join(str(v) for v in actual_vals))
         try:
             self._tree.set(item, "_copy_", "✓")
@@ -345,13 +367,94 @@ class ResultTable(ctk.CTkFrame):
         if not sel:
             return "break"
         values = self._tree.item(sel[0], "values")
-        if self._focused_col and self._focused_col not in ("#1", "#2"):
+        if self._focused_col and self._focused_col not in ("#1", "#2", "#3"):
             col_idx = int(self._focused_col.lstrip("#")) - 1
             if 0 <= col_idx < len(values):
                 self._clip(str(values[col_idx]))
                 return "break"
-        self._clip("\t".join(str(v) for v in values[2:]))  # skip _copy_ and _row_
+        self._clip("\t".join(str(v) for v in values[3:]))  # skip _bulb_, _copy_, _row_
         return "break"
+
+    # ── hover: лампочка ──────────────────────────────────────────────────────
+
+    def _on_motion(self, event):
+        item = self._tree.identify_row(event.y)
+        col  = self._tree.identify_column(event.x)
+        if item and col in ("#1", "#2", "#3"):
+            if item != self._hovered_item:
+                self._clear_bulb(self._hovered_item)
+                self._hovered_item = item
+                try:
+                    self._tree.set(item, "_bulb_", "💡")
+                except Exception:
+                    pass
+        else:
+            self._clear_bulb(self._hovered_item)
+            self._hovered_item = ""
+
+    def _on_leave_tree(self, event):
+        self._clear_bulb(self._hovered_item)
+        self._hovered_item = ""
+
+    def _clear_bulb(self, item: str):
+        if item:
+            try:
+                if self._tree.exists(item):
+                    self._tree.set(item, "_bulb_", "")
+            except Exception:
+                pass
+
+    # ── контекстное меню лампочки ─────────────────────────────────────────────
+
+    def _show_bulb_menu(self, event, item: str):
+        vals = self._tree.item(item, "values")
+        first_col_val = str(vals[3]) if len(vals) > 3 else ""
+        row_text = "\t".join(str(v) for v in vals[3:])
+        menu = tk.Menu(self, tearoff=0)
+
+        top = self.winfo_toplevel()
+        if hasattr(top, "_open_reminder_for_row"):
+            menu.add_command(
+                label="💡 Напомнить",
+                command=lambda: top._open_reminder_for_row(first_col_val),
+            )
+        menu.add_command(label="📋 Копировать стр",
+                         command=lambda: self._clip(row_text))
+        menu.add_command(label="👁 Следить", state="disabled")
+        menu.add_separator()
+        menu.add_command(label="🙈 Скрыть",
+                         command=lambda: self._hide_row(first_col_val))
+        if self._hidden_rows:
+            show_menu = tk.Menu(menu, tearoff=0)
+            for key in list(self._hidden_rows.keys()):
+                show_menu.add_command(label=str(key),
+                                      command=lambda k=key: self._show_row(k))
+            menu.add_cascade(label="📂 Показать ▶", menu=show_menu)
+        else:
+            menu.add_command(label="📂 Показать", state="disabled")
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _hide_row(self, first_col_val: str):
+        self._hidden_keys.add(first_col_val)
+        new_rows = []
+        for r in self._rows:
+            if r and str(r[0]) == first_col_val:
+                self._hidden_rows[first_col_val] = r
+            else:
+                new_rows.append(r)
+        self._rows = new_rows
+        self._hovered_item = ""
+        self._render()
+
+    def _show_row(self, key: str):
+        self._hidden_keys.discard(key)
+        if key in self._hidden_rows:
+            restored = self._hidden_rows.pop(key)
+            self._rows.append(restored)
+        self._render()
 
     def _clip(self, text: str):
         top = self.winfo_toplevel()
@@ -388,7 +491,7 @@ class ResultTable(ctk.CTkFrame):
         for row in self._rows:
             ws.append(["" if v is None else v for v in row])
         for col in ws.columns:
-            max_len = max((len(str(cell.value or "")) for cell in col), default=0)
+            max_len = max((len(str(cell.value or "")) for cell in col[:201]), default=0)
             ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
         ws.freeze_panes = "A2"
         wb.save(filepath)

@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import json
@@ -49,9 +50,16 @@ class DataManager:
     def _save_settings(self, settings: Dict[str, Any]):
         """Сохраняет настройки в файл"""
         tmp = self.settings_file + ".tmp"
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, ensure_ascii=False, indent=4)
-        os.replace(tmp, self.settings_file)
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, ensure_ascii=False, indent=4)
+            os.replace(tmp, self.settings_file)
+        except OSError as e:
+            logging.error("Ошибка сохранения настроек DataManager: %s", e)
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     def get_db_display_name(self, internal_name: str) -> str:
         """Возвращает отображаемое имя для базы данных"""
@@ -138,9 +146,17 @@ class DataManager:
         self._ensure_directory(self.config_dir)
         
         tmp = filepath + ".tmp"
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(config, f, ensure_ascii=False, indent=4)
-        os.replace(tmp, filepath)
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=4)
+            os.replace(tmp, filepath)
+        except OSError as e:
+            logging.error("Ошибка записи конфигурации БД %s: %s", filepath, e)
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            return False
         return True
 
     def delete_db(self, name: str) -> bool:
@@ -165,9 +181,17 @@ class DataManager:
             return False
         self._ensure_directory(self.queries_dir)
         tmp = filepath + ".tmp"
-        with open(tmp, 'w', encoding='utf-8') as f:
-            f.write(query)
-        os.replace(tmp, filepath)
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                f.write(query)
+            os.replace(tmp, filepath)
+        except OSError as e:
+            logging.error("Ошибка записи запроса %s: %s", filepath, e)
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            return False
         return True
 
     def delete_query(self, name: str) -> bool:

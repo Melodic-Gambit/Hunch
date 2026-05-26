@@ -1,6 +1,7 @@
 import os
 import json
 import pytest
+from unittest.mock import patch
 from data_manager import DataManager
 
 
@@ -162,6 +163,29 @@ def test_add_db_defaults_fill_missing_fields(dm, tmp_path):
     # Поля, не переданные пользователем, заполнены дефолтами
     assert "host" in data
     assert "username" in data
+
+
+# ── OSError-ветки (BUG-11 / BUG-33) ─────────────────────────────────────────
+
+def test_add_db_oserror_on_open_returns_false(dm, tmp_path):
+    with patch("builtins.open", side_effect=OSError("disk full")):
+        result = dm.add_new_db("faildb")
+    assert result is False
+    assert not (tmp_path / "config" / "faildb.json").exists()
+    assert not (tmp_path / "config" / "faildb.json.tmp").exists()
+
+
+def test_add_query_oserror_on_replace_returns_false_and_cleans_tmp(dm, tmp_path):
+    with patch("data_manager.os.replace", side_effect=OSError("replace failed")):
+        result = dm.add_new_query("failq", "SELECT 1")
+    assert result is False
+    assert not (tmp_path / "queries" / "failq.sql").exists()
+    assert not (tmp_path / "queries" / "failq.sql.tmp").exists()
+
+
+def test_save_settings_oserror_does_not_propagate(dm):
+    with patch("builtins.open", side_effect=OSError("no space")):
+        dm._save_settings({"key": "value"})  # не должно бросать исключение
 
 
 # ── add_new_query: отсутствующая директория ───────────────────────────────────

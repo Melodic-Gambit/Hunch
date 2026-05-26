@@ -1207,26 +1207,35 @@ class AnimatedPanel(tk.Frame):
         sf = ctk.CTkScrollableFrame(self, fg_color=("gray87", "#272727"))
         sf.grid(row=0, column=0, sticky="nsew")
         self._sf = sf
+        # col 0 = bulb (FEAT-18), col 1 = №, cols 2..ncols+1 = data, col ncols+2 = copy
+        sf.grid_columnconfigure(0, weight=0, minsize=24)
+        sf.grid_columnconfigure(1, weight=0, minsize=40)
         for ci in range(ncols):
-            sf.grid_columnconfigure(ci, weight=1)
-        sf.grid_columnconfigure(ncols, weight=0, minsize=32)
+            sf.grid_columnconfigure(ci + 2, weight=1)
+        sf.grid_columnconfigure(ncols + 2, weight=0, minsize=32)
 
         # Строка заголовков
+        ctk.CTkLabel(sf, text="", anchor="center",
+                     font=ctk.CTkFont(size=10)
+                     ).grid(row=0, column=0, padx=(2, 1), pady=(4, 1))
+        ctk.CTkLabel(sf, text="№", anchor="e",
+                     font=ctk.CTkFont(size=10, weight="bold")
+                     ).grid(row=0, column=1, sticky="ew", padx=(2, 4), pady=(4, 1))
         for ci, col_name in enumerate(columns):
             ctk.CTkLabel(sf, text=col_name, anchor="w",
                          font=ctk.CTkFont(size=10, weight="bold")
-                         ).grid(row=0, column=ci, sticky="ew", padx=(6, 2), pady=(4, 1))
+                         ).grid(row=0, column=ci + 2, sticky="ew", padx=(6, 2), pady=(4, 1))
         ctk.CTkLabel(sf, text="⎘", anchor="center",
                      font=ctk.CTkFont(size=11)
-                     ).grid(row=0, column=ncols, padx=(2, 4), pady=(4, 1))
+                     ).grid(row=0, column=ncols + 2, padx=(2, 4), pady=(4, 1))
 
         ctk.CTkFrame(sf, height=1, fg_color=("gray65", "gray40")
-                     ).grid(row=1, column=0, columnspan=ncols + 1,
+                     ).grid(row=1, column=0, columnspan=ncols + 3,
                             sticky="ew", padx=4, pady=(0, 2))
 
         if not display_rows:
             ctk.CTkLabel(sf, text="Нет данных", font=ctk.CTkFont(size=10)
-                         ).grid(row=2, column=0, columnspan=ncols + 1, padx=8, pady=8)
+                         ).grid(row=2, column=0, columnspan=ncols + 3, padx=8, pady=8)
             return
 
         _OFFSET_TYPES = {"Индикатор 1", "Индикатор 2", "Индикатор - круги",
@@ -1250,9 +1259,69 @@ class AnimatedPanel(tk.Frame):
         except Exception:
             pass
 
+        def _delayed_hide(lbl, flag):
+            if not flag[0]:
+                try:
+                    lbl.configure(text="")
+                except Exception:
+                    pass
+
+        def _make_bulb_menu(row_data):
+            def _show(event):
+                first_val = str(row_data[0]) if row_data else ""
+                row_text  = "\n".join("" if v is None else str(v) for v in row_data)
+                menu = tk.Menu(sf, tearoff=0)
+                top = sf.winfo_toplevel()
+                if hasattr(top, "_open_reminder_for_row"):
+                    menu.add_command(
+                        label="💡 Напомнить",
+                        command=lambda: top._open_reminder_for_row(first_val),
+                    )
+                menu.add_command(
+                    label="📋 Копировать стр",
+                    command=lambda: (
+                        top.clipboard_clear(),
+                        top.clipboard_append(row_text),
+                    ),
+                )
+                menu.add_command(label="👁 Следить", state="disabled")
+                try:
+                    menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    menu.grab_release()
+            return _show
+
         # Строки данных
         now = datetime.datetime.now()
         for ri, row in enumerate(display_rows):
+            # Лампочка (col 0)
+            bulb_lbl = ctk.CTkLabel(sf, text="", width=24, anchor="center",
+                                    cursor="hand2",
+                                    font=ctk.CTkFont(size=11))
+            bulb_lbl.grid(row=ri + 2, column=0, padx=(2, 1), pady=1, sticky="ew")
+
+            # № (col 1)
+            row_num_lbl = ctk.CTkLabel(sf, text=str(ri + 1), anchor="e",
+                                       font=ctk.CTkFont(size=9),
+                                       text_color=("gray50", "gray60"))
+            row_num_lbl.grid(row=ri + 2, column=1, sticky="ew", padx=(2, 4), pady=1)
+
+            _flag = [False]
+
+            def _enter(e, lbl=bulb_lbl, f=_flag):
+                f[0] = True
+                lbl.configure(text="💡")
+
+            def _leave(e, lbl=bulb_lbl, f=_flag):
+                f[0] = False
+                lbl.after(60, lambda: _delayed_hide(lbl, f))
+
+            bulb_lbl.bind("<Enter>", _enter)
+            bulb_lbl.bind("<Leave>", _leave)
+            row_num_lbl.bind("<Enter>", _enter)
+            row_num_lbl.bind("<Leave>", _leave)
+            bulb_lbl.bind("<Button-1>", _make_bulb_menu(row))
+
             for ci, col_name in enumerate(columns):
                 cfg   = viz_configs.get(col_name, {})
                 vtype = cfg.get("type", "Стандартный")
@@ -1427,7 +1496,7 @@ class AnimatedPanel(tk.Frame):
                 else:
                     w = _make_compact_cell(sf, vtype, color, raw, cfg)
 
-                w.grid(row=ri + 2, column=ci, sticky="ew", padx=(6, 2), pady=1)
+                w.grid(row=ri + 2, column=ci + 2, sticky="ew", padx=(6, 2), pady=1)
 
             def _do_copy(r=row):
                 text = "\n".join("" if v is None else str(v) for v in r)
@@ -1441,12 +1510,12 @@ class AnimatedPanel(tk.Frame):
                 fg_color="transparent",
                 hover_color=("gray75", "gray35"),
                 command=_do_copy,
-            ).grid(row=ri + 2, column=ncols, padx=(2, 4), pady=1)
+            ).grid(row=ri + 2, column=ncols + 2, padx=(2, 4), pady=1)
 
         if len(rows) > self._MAX_ROWS:
             ctk.CTkLabel(sf,
                          text=f"… первые {self._MAX_ROWS} из {len(rows)} строк",
                          font=ctk.CTkFont(size=9),
                          text_color=("gray50", "gray55")
-                         ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols + 1,
+                         ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols + 3,
                                 sticky="w", padx=6, pady=(2, 4))
