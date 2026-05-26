@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 
@@ -27,5 +28,5 @@ def _cleanup_stale_tmp(base: str):
             try:
                 if os.path.getmtime(path) < cutoff:
                     os.remove(path)
-            except OSError:
-                pass
+            except OSError as e:
+                logging.warning("Не удалось удалить %s: %s", path, e)
