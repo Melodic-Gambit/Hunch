@@ -563,18 +563,21 @@ class DatabaseConnectionDialog(ctk.CTkToplevel):
     # ── центрирование ─────────────────────────────────────────────────────────
 
     def _center(self):
-        self.update_idletasks()
-        pw, ph = self.master.winfo_width(), self.master.winfo_height()
-        px, py = self.master.winfo_rootx(), self.master.winfo_rooty()
-        saved  = (self._settings_manager.get_setting("dialog_size_connection")
-                  if self._settings_manager else None)
-        if saved and len(saved) == 2:
-            w, h = saved
-        else:
-            w = self.winfo_reqwidth()
-            h = self.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"{w}x{h}+{x}+{y}")
-        self.deiconify()
-        self.grab_set()
+        try:
+            self.update_idletasks()
+            pw, ph = self.master.winfo_width(), self.master.winfo_height()
+            px, py = self.master.winfo_rootx(), self.master.winfo_rooty()
+            saved  = (self._settings_manager.get_setting("dialog_size_connection")
+                      if self._settings_manager else None)
+            if saved and len(saved) == 2:
+                w, h = saved
+            else:
+                w = self.winfo_reqwidth()
+                h = self.winfo_reqheight()
+            x = px + (pw - w) // 2
+            y = py + (ph - h) // 2
+            self.geometry(f"{w}x{h}+{x}+{y}")
+            self.deiconify()
+            self.grab_set()
+        except Exception:
+            pass

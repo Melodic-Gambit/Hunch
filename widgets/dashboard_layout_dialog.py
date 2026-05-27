@@ -31,7 +31,10 @@ class DashboardLayoutDialog(ctk.CTkToplevel):
         self.title("Компоновка приборной панели")
         self.resizable(False, False)
         self.transient(parent)
-        self.grab_set()
+        try:
+            self.grab_set()
+        except Exception:
+            pass
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
         self._build(panel_count)

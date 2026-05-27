@@ -26,7 +26,10 @@ class _StyledDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.minsize(380, 0)
         self.transient(parent)
-        self.grab_set()
+        try:
+            self.grab_set()
+        except Exception:
+            pass
 
         symbol, color = self._ICONS.get(kind, ("ℹ", ("#2563EB", "#3B82F6")))
 

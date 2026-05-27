@@ -160,18 +160,22 @@ class ResultTable(ctk.CTkFrame):
 
     # ── данные ───────────────────────────────────────────────────────────────
 
-    def set_data(self, rows: list, columns: list):
+    def set_data(self, rows: list, columns: list, reset_hidden: bool = True):
         all_rows = [list(r) for r in rows]
         self._columns = list(columns)
         self._sort_col = None
         self._sort_rev = False
         self._current_page = 0
+        if reset_hidden:
+            self._hidden_keys = set()
+            self._hidden_rows = {}
         if self._hidden_keys:
             visible = []
+            self._hidden_rows = {}
             for r in all_rows:
                 key = str(r[0]) if r else ""
                 if key in self._hidden_keys:
-                    self._hidden_rows[key] = r
+                    self._hidden_rows.setdefault(key, []).append(r)
                 else:
                     visible.append(r)
             self._rows = visible
@@ -379,8 +383,7 @@ class ResultTable(ctk.CTkFrame):
 
     def _on_motion(self, event):
         item = self._tree.identify_row(event.y)
-        col  = self._tree.identify_column(event.x)
-        if item and col in ("#1", "#2", "#3"):
+        if item:
             if item != self._hovered_item:
                 self._clear_bulb(self._hovered_item)
                 self._hovered_item = item
@@ -442,7 +445,7 @@ class ResultTable(ctk.CTkFrame):
         new_rows = []
         for r in self._rows:
             if r and str(r[0]) == first_col_val:
-                self._hidden_rows[first_col_val] = r
+                self._hidden_rows.setdefault(first_col_val, []).append(r)
             else:
                 new_rows.append(r)
         self._rows = new_rows
@@ -452,8 +455,10 @@ class ResultTable(ctk.CTkFrame):
     def _show_row(self, key: str):
         self._hidden_keys.discard(key)
         if key in self._hidden_rows:
-            restored = self._hidden_rows.pop(key)
-            self._rows.append(restored)
+            self._rows.extend(self._hidden_rows.pop(key))
+            if self._sort_col is not None:
+                self._sort_by(self._sort_col)
+                return
         self._render()
 
     def _clip(self, text: str):
