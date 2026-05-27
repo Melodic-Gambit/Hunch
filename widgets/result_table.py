@@ -171,7 +171,6 @@ class ResultTable(ctk.CTkFrame):
             self._hidden_rows = {}
         if self._hidden_keys:
             visible = []
-            self._hidden_rows = {}
             for r in all_rows:
                 key = str(r[0]) if r else ""
                 if key in self._hidden_keys:
@@ -283,6 +282,13 @@ class ResultTable(ctk.CTkFrame):
     def _sort_by(self, col: int):
         self._sort_rev = (not self._sort_rev) if self._sort_col == col else False
         self._sort_col = col
+        self._apply_sort()
+
+    def _apply_sort(self):
+        col = self._sort_col
+        if col is None:
+            self._render()
+            return
 
         def key(row):
             v = row[col] if col < len(row) else None
@@ -457,7 +463,7 @@ class ResultTable(ctk.CTkFrame):
         if key in self._hidden_rows:
             self._rows.extend(self._hidden_rows.pop(key))
             if self._sort_col is not None:
-                self._sort_by(self._sort_col)
+                self._apply_sort()
                 return
         self._render()
 
