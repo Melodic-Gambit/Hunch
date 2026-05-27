@@ -1,3 +1,4 @@
+import json
 import pytest
 from settings import SettingsManager
 
@@ -39,6 +40,28 @@ def test_persists_across_instances(tmp_path):
 def test_defaults_on_missing_file(tmp_path):
     sm = SettingsManager(settings_file=str(tmp_path / "new.json"))
     assert sm.get_setting("theme") == "dark"
+
+
+def test_defaults_include_check_updates(tmp_path):
+    sm = SettingsManager(settings_file=str(tmp_path / "new.json"))
+    assert sm.get_setting("check_updates") is True
+
+
+def test_new_default_key_backfilled_into_existing_file(tmp_path):
+    f = str(tmp_path / "settings.json")
+    # simulate old settings.json without check_updates
+    with open(f, "w", encoding="utf-8") as fh:
+        json.dump({"theme": "light", "refresh_interval": 60}, fh)
+    sm = SettingsManager(settings_file=f)
+    assert sm.get_setting("check_updates") is True
+
+
+def test_existing_value_overrides_default(tmp_path):
+    f = str(tmp_path / "settings.json")
+    with open(f, "w", encoding="utf-8") as fh:
+        json.dump({"check_updates": False}, fh)
+    sm = SettingsManager(settings_file=f)
+    assert sm.get_setting("check_updates") is False
 
 
 # ── интервалы запросов ────────────────────────────────────────────────────────

@@ -27,21 +27,23 @@ class SettingsManager:
     
     def load_settings(self) -> Dict[str, Any]:
         """Загружает настройки из файла"""
+        defaults: Dict[str, Any] = {
+            "refresh_interval": 180,
+            "query_intervals": {},
+            "theme": "dark",
+            "color_scheme": "blue",
+            "check_updates": True,
+            "db_display_names": {},
+            "query_display_names": {},
+        }
         if os.path.exists(self.settings_file):
             try:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    loaded = json.load(f)
+                return {**defaults, **loaded}
             except (json.JSONDecodeError, IOError):
                 pass
-        # Настройки по умолчанию
-        return {
-            "refresh_interval": 180,  # 3 минуты
-            "query_intervals": {},      # Интервалы для каждого запроса
-            "theme": "dark",
-            "color_scheme": "blue",
-            "db_display_names": {},       # Отображаемые имена баз данных
-            "query_display_names": {}     # Отображаемые имена запросов
-        }
+        return defaults
     
     def save_settings(self):
         """Сохраняет настройки в файл"""
