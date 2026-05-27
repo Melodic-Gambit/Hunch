@@ -566,4 +566,7 @@ class QueryDialog(ctk.CTkToplevel):
         y = py + (ph - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
         self.deiconify()
-        self.grab_set()
+        try:
+            self.grab_set()
+        except Exception:
+            pass

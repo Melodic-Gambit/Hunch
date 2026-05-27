@@ -616,7 +616,12 @@ class VisualizationSettingsDialog(ctk.CTkToplevel):
         self.update_idletasks()          # layout вычислен пока окно скрыто
         self._place_center(parent)       # позиционируем сразу — без after()
         self.deiconify()
-        self.after(20, self.grab_set)    # grab после отрисовки
+        def _safe_grab():
+            try:
+                self.grab_set()
+            except Exception:
+                pass
+        self.after(20, _safe_grab)       # grab после отрисовки
 
     def _place_center(self, parent):
         w = self.winfo_reqwidth()
@@ -1167,7 +1172,12 @@ class FrameEditDialog(ctk.CTkToplevel):
         self.update_idletasks()
         self._place_center(parent)
         self.deiconify()
-        self.after(20, self.grab_set)
+        def _safe_grab():
+            try:
+                self.grab_set()
+            except Exception:
+                pass
+        self.after(20, _safe_grab)
 
     def _place_center(self, parent):
         w = self.winfo_reqwidth()
@@ -1584,7 +1594,7 @@ class DashboardPanel(ctk.CTkFrame):
 
     def _render_animated(self, rows: list, columns: list, delta_data: dict = None):
         self.result_table.grid_remove()
-        self.result_table.set_data(rows, columns)
+        self.result_table.set_data(rows, columns, reset_hidden=False)
         if self._anim_panel is None or not self._anim_panel.winfo_exists():
             self._anim_panel = AnimatedPanel(self)
             self._anim_panel.grid(row=1, column=0, sticky="nsew")
@@ -7904,10 +7914,8 @@ class MainWindow(ctk.CTk):
             self._rem_empty_lbl.grid(row=0, column=0, pady=40)
             return
 
-        dark = ctk.get_appearance_mode() == "Dark"
         for idx, r in enumerate(items):
             enabled = bool(r["enabled"])
-            bg = ("gray85", "gray22") if dark else ("gray88", "gray22")
             card = ctk.CTkFrame(self._rem_scroll,
                                 corner_radius=8,
                                 fg_color=("gray88", "gray22"))
@@ -8091,14 +8099,18 @@ class MainWindow(ctk.CTk):
     def _check_reminders(self):
         try:
             due = self.reminders_manager.get_due()
-            for r in due:
+        except Exception:
+            due = []
+        for r in due:
+            try:
                 self.reminders_manager.mark_fired(r["id"])
                 self._fire_reminder(r["comment"])
-        except Exception:
-            pass
+            except Exception:
+                pass
         self._reminder_check_after_id = self.after(30_000, self._check_reminders)
 
     def _fire_reminder(self, comment: str):
+        notified = False
         if _WINOTIFY_OK:
             try:
                 n = _WinNotification(
@@ -8108,8 +8120,11 @@ class MainWindow(ctk.CTk):
                     duration="short",
                 )
                 n.show()
+                notified = True
             except Exception:
                 pass
+        if not notified:
+            messagebox.showinfo("⏰ Напоминание", comment, parent=self)
 
     def _build_service_card_gf_scraping(self, parent):
         # ── логотип ───────────────────────────────────────────────────────────
