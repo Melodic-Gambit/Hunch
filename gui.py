@@ -2478,8 +2478,11 @@ class MainWindow(ctk.CTk):
                         getattr(self, "_version", "0.0.0")):
                     self.after(0, lambda t=latest_tag, u=installer_url: self._show_update_toast(t, u))
                 self.after(0, _stop_spin)
-            except Exception:
+            except Exception as _err:
                 self.after(0, _stop_spin)
+                _msg = f"Проверка обновлений не выполнена: {type(_err).__name__}: {_err}"
+                self.after(0, lambda m=_msg: self._add_notification(
+                    "Система", message=m, system=True))
 
         _tick()
         threading.Thread(target=_fetch, daemon=True).start()
