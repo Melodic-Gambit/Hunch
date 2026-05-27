@@ -461,6 +461,21 @@ def _make_tab_icon_img(shape: str, size: int,
         b(1.0, 9.0, 6.0, 6.0)
         b(9.0, 9.0, 6.0, 6.0)
 
+    elif shape == "clock":                   # ⏰ Напоминания
+        lw = max(1, round(1.5 * sc))
+        d.ellipse([round(1.5*sc), round(1.5*sc),
+                   round(14.5*sc), round(14.5*sc)], outline=c, width=lw)
+        cx_, cy_ = big / 2, big / 2
+        # часовая стрелка (короткая, влево-вверх ~10:10)
+        d.line([(cx_, cy_),
+                (cx_ - round(2.5*sc), cy_ - round(3.0*sc))], fill=c, width=lw)
+        # минутная стрелка (длинная, вверх)
+        d.line([(cx_, cy_),
+                (cx_, cy_ - round(5.0*sc))], fill=c, width=lw)
+        # точка в центре
+        r0 = max(1, round(0.8 * sc))
+        d.ellipse([cx_-r0, cy_-r0, cx_+r0, cy_+r0], fill=c)
+
     return img.resize((size, size), Image.LANCZOS)
 
 
@@ -1922,6 +1937,7 @@ class _TabBar(ctk.CTkFrame):
         "🔗 Подключения":      "link",
         "📝 Запросы":          "doc",
         "⚙️ Настройки":        "gear",
+        "⏰ Напоминания":      "clock",
         "🔔 Уведомления":      "bell",
         "🛠 Сервисы":          "grid",
     }
@@ -2213,7 +2229,6 @@ class MainWindow(ctk.CTk):
         self._selected_query_name: Optional[str]     = None
         self._selected_connection_name: Optional[str] = None
 
-        self._active_toasts:        list = []   # резерв (не используется)
         self._signal_last_played:   dict = {}  # {query_name: monotonic} дебаунс сигнала 10 с
         self._alert_last_fired:     dict = {}  # {(query_file, type): monotonic} дебаунс алертов
         self._alert_history:        list = []  # [{ts, query_name, query_file, type, detail}]
@@ -2239,6 +2254,7 @@ class MainWindow(ctk.CTk):
         self._notif_rotation_after_id       = None
 
         self._reminder_check_after_id = None
+        self._active_toasts: list     = []
 
         # GF.Scraping scheduler after-IDs
         self._gf_daily_after_id = None
@@ -3525,9 +3541,6 @@ class MainWindow(ctk.CTk):
         # _highlight_notif_id в None, поэтому нужно выставить значение уже после.
         self._highlight_notif_id = notif_id
         self.after(80, lambda: self._blink_notif_row(notif_id, 12))
-
-    def _reposition_toasts(self):
-        pass  # toast отображается inline в шапке — repositioning не нужен
 
     def _check_change_alert(self, query_file: str, new_rows: list, new_cols):
         """Сравнивает новый результат с кэшем; при изменении показывает toast."""
@@ -7923,7 +7936,12 @@ class MainWindow(ctk.CTk):
             card.grid_columnconfigure(1, weight=1)
 
             # Тип-иконка
-            icon = "📅" if r["type"] == "once" else "🔁"
+            if r["type"] == "once":
+                icon = "📅"
+            elif r["type"] == "daily":
+                icon = "🔁"
+            else:
+                icon = "🗓"
             ctk.CTkLabel(card, text=icon,
                          font=ctk.CTkFont(size=16)).grid(
                 row=0, column=0, rowspan=2, padx=(10, 6), pady=6)
@@ -7938,6 +7956,15 @@ class MainWindow(ctk.CTk):
             # Время
             if r["type"] == "once":
                 time_txt = r["once_dt"] or "—"
+            elif r["type"] == "scheduled":
+                try:
+                    dts = json.loads(r.get("schedule_dts") or "[]")
+                except Exception:
+                    dts = []
+                if dts:
+                    time_txt = "По графику: " + ", ".join(dts)
+                else:
+                    time_txt = "По графику: —"
             else:
                 time_txt = f'Ежедневно в {r["daily_hm"]}' if r["daily_hm"] else "—"
             if not enabled:
@@ -7986,14 +8013,16 @@ class MainWindow(ctk.CTk):
         if prefill_text:
             comment_entry.insert(0, prefill_text)
 
-        # Тип: однократно / ежедневно
+        # Тип: однократно / ежедневно / по графику
         type_var = tk.StringVar(value="once")
         type_frame = ctk.CTkFrame(dlg, fg_color="transparent")
         type_frame.grid(row=3, column=0, padx=20, pady=(0, 6), sticky="w")
         ctk.CTkRadioButton(type_frame, text="Однократно", variable=type_var,
                            value="once").grid(row=0, column=0, padx=(0, 16))
         ctk.CTkRadioButton(type_frame, text="Ежедневно", variable=type_var,
-                           value="daily").grid(row=0, column=1)
+                           value="daily").grid(row=0, column=1, padx=(0, 16))
+        ctk.CTkRadioButton(type_frame, text="По графику", variable=type_var,
+                           value="scheduled").grid(row=0, column=2)
 
         # Дата+время (для однократного)
         once_frame = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -8012,17 +8041,38 @@ class MainWindow(ctk.CTk):
         daily_entry = ctk.CTkEntry(daily_frame, width=100, placeholder_text="09:00")
         daily_entry.grid(row=1, column=0, sticky="w")
 
+        # До 3 дат+времени (для "По графику")
+        sched_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        sched_frame.grid(row=6, column=0, padx=20, pady=(0, 4), sticky="w")
+        ctk.CTkLabel(sched_frame, text="Дата и время (ГГГГ-ММ-ДД ЧЧ:ММ):",
+                     anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
+        _sched_ph = "2026-12-31 09:00"
+        sched_entries = []
+        for _si in range(3):
+            _lbl = ctk.CTkLabel(sched_frame,
+                                text=f"{_si + 1}.",
+                                width=18, anchor="e",
+                                font=ctk.CTkFont(size=12))
+            _lbl.grid(row=_si + 1, column=0, pady=(4, 0), sticky="e")
+            _e = ctk.CTkEntry(sched_frame, width=200, placeholder_text=_sched_ph)
+            _e.grid(row=_si + 1, column=1, padx=(6, 0), pady=(4, 0), sticky="w")
+            sched_entries.append(_e)
+
         error_lbl = ctk.CTkLabel(dlg, text="", text_color=("#DC2626", "#F87171"),
                                  font=ctk.CTkFont(size=11), anchor="w")
-        error_lbl.grid(row=6, column=0, padx=20, pady=(0, 4), sticky="w")
+        error_lbl.grid(row=7, column=0, padx=20, pady=(0, 4), sticky="w")
 
         def _toggle_type(*_):
-            if type_var.get() == "once":
+            t = type_var.get()
+            once_frame.grid_remove()
+            daily_frame.grid_remove()
+            sched_frame.grid_remove()
+            if t == "once":
                 once_frame.grid()
-                daily_frame.grid_remove()
-            else:
-                once_frame.grid_remove()
+            elif t == "daily":
                 daily_frame.grid()
+            else:
+                sched_frame.grid()
 
         type_var.trace_add("write", _toggle_type)
         _toggle_type()
@@ -8039,12 +8089,15 @@ class MainWindow(ctk.CTk):
                     error_lbl.configure(text="Укажите дату и время.")
                     return
                 try:
-                    datetime.datetime.strptime(val, "%Y-%m-%d %H:%M")
+                    dt = datetime.datetime.strptime(val, "%Y-%m-%d %H:%M")
                 except ValueError:
                     error_lbl.configure(text="Формат: ГГГГ-ММ-ДД ЧЧ:ММ")
                     return
+                if dt < datetime.datetime.now():
+                    error_lbl.configure(text=f"Дата «{val}» уже в прошлом.")
+                    return
                 self.reminders_manager.add(comment, "once", once_dt=val)
-            else:
+            elif rtype == "daily":
                 val = daily_entry.get().strip()
                 if not val:
                     error_lbl.configure(text="Укажите время.")
@@ -8055,11 +8108,35 @@ class MainWindow(ctk.CTk):
                     error_lbl.configure(text="Формат времени: ЧЧ:ММ")
                     return
                 self.reminders_manager.add(comment, "daily", daily_hm=val)
+            else:
+                vals = []
+                for _e in sched_entries:
+                    v = _e.get().strip()
+                    if not v:
+                        continue
+                    try:
+                        dt = datetime.datetime.strptime(v, "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        error_lbl.configure(
+                            text=f"Неверный формат «{v}». Нужно: ГГГГ-ММ-ДД ЧЧ:ММ"
+                        )
+                        return
+                    if dt < datetime.datetime.now():
+                        error_lbl.configure(text=f"Дата «{v}» уже в прошлом.")
+                        return
+                    vals.append(v)
+                if not vals:
+                    error_lbl.configure(text="Укажите хотя бы одну дату и время.")
+                    return
+                self.reminders_manager.add(
+                    comment, "scheduled",
+                    schedule_dts=json.dumps(vals),
+                )
             self._refresh_reminders_list()
             dlg.destroy()
 
         btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
-        btn_row.grid(row=7, column=0, pady=(4, 16))
+        btn_row.grid(row=8, column=0, pady=(4, 16))
         ctk.CTkButton(btn_row, text="Сохранить", width=110, command=_save
                       ).grid(row=0, column=0, padx=(0, 8))
         ctk.CTkButton(btn_row, text="Отмена", width=80,
@@ -8109,6 +8186,30 @@ class MainWindow(ctk.CTk):
                 pass
         self._reminder_check_after_id = self.after(30_000, self._check_reminders)
 
+    def _reposition_toasts(self):
+        """Recalculate positions of all active toasts (bottom-right stack)."""
+        try:
+            margin     = 12
+            title_bar  = 30   # Windows title bar + border estimate
+            sw = self.winfo_screenwidth()
+            sh = self.winfo_screenheight()
+            y_bottom = sh - margin
+            for t in list(self._active_toasts):
+                try:
+                    t.update_idletasks()
+                    tw = t.winfo_reqwidth()
+                    th = t.winfo_reqheight()
+                    if th <= 1:
+                        th = 120   # fallback if not yet laid out
+                    total_h = th + title_bar
+                    x = sw - tw - margin
+                    t.geometry(f"+{x}+{y_bottom - total_h}")
+                    y_bottom -= total_h + margin
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def _fire_reminder(self, comment: str):
         notified = False
         if _WINOTIFY_OK:
@@ -8124,7 +8225,50 @@ class MainWindow(ctk.CTk):
             except Exception:
                 pass
         if not notified:
-            messagebox.showinfo("⏰ Напоминание", comment, parent=self)
+            toast = ctk.CTkToplevel(self)
+            toast.title("⏰ Напоминание")
+            toast.resizable(False, False)
+            toast.attributes("-topmost", True)
+            toast.withdraw()
+
+            ctk.CTkLabel(
+                toast, text="⏰ Напоминание",
+                font=ctk.CTkFont(size=14, weight="bold"),
+            ).pack(padx=16, pady=(14, 4))
+            ctk.CTkLabel(toast, text=comment, wraplength=280).pack(
+                padx=16, pady=(0, 8)
+            )
+
+            self._active_toasts.append(toast)
+
+            def _close(t=toast):
+                try:
+                    self._active_toasts.remove(t)
+                except ValueError:
+                    pass
+                try:
+                    t.destroy()
+                except Exception:
+                    pass
+                self._reposition_toasts()
+
+            ctk.CTkButton(
+                toast, text="Закрыть", width=80, command=_close
+            ).pack(pady=(0, 12))
+
+            def _place(t=toast, attempt=0):
+                try:
+                    t.update_idletasks()
+                    if t.winfo_reqheight() <= 1 and attempt < 5:
+                        t.after(30, lambda: _place(t, attempt + 1))
+                        return
+                    self._reposition_toasts()
+                    t.deiconify()
+                except Exception:
+                    pass
+
+            toast.after(50, _place)
+            toast.after(5000, _close)
 
     def _build_service_card_gf_scraping(self, parent):
         # ── логотип ───────────────────────────────────────────────────────────

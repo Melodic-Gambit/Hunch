@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import sqlite3
 import datetime
 import threading
@@ -33,25 +34,35 @@ class RemindersManager:
             with self._connect() as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS reminders (
-                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                        comment    TEXT NOT NULL,
-                        type       TEXT NOT NULL DEFAULT 'once',
-                        once_dt    TEXT,
-                        daily_hm   TEXT,
-                        enabled    INTEGER NOT NULL DEFAULT 1,
-                        last_fired TEXT
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        comment      TEXT NOT NULL,
+                        type         TEXT NOT NULL DEFAULT 'once',
+                        once_dt      TEXT,
+                        daily_hm     TEXT,
+                        schedule_dts TEXT,
+                        enabled      INTEGER NOT NULL DEFAULT 1,
+                        last_fired   TEXT
                     )
                 """)
+                # migration: add schedule_dts to existing databases
+                try:
+                    conn.execute(
+                        "ALTER TABLE reminders ADD COLUMN schedule_dts TEXT"
+                    )
+                except Exception:
+                    pass
                 conn.commit()
 
     def add(self, comment: str, rtype: str,
-            once_dt: str = None, daily_hm: str = None) -> int:
+            once_dt: str = None, daily_hm: str = None,
+            schedule_dts: str = None) -> int:
         with self._lock:
             with self._connect() as conn:
                 cur = conn.execute(
-                    "INSERT INTO reminders (comment, type, once_dt, daily_hm)"
-                    " VALUES (?, ?, ?, ?)",
-                    (comment, rtype, once_dt, daily_hm),
+                    "INSERT INTO reminders"
+                    " (comment, type, once_dt, daily_hm, schedule_dts)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (comment, rtype, once_dt, daily_hm, schedule_dts),
                 )
                 conn.commit()
                 return cur.lastrowid
@@ -71,18 +82,37 @@ class RemindersManager:
         return [dict(r) for r in rows]
 
     def mark_fired(self, reminder_id: int):
-        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _now = datetime.datetime.now()
+        ts = _now.strftime("%Y-%m-%d %H:%M:%S")
+        now_str = _now.strftime("%Y-%m-%d %H:%M")
         with self._lock:
             with self._connect() as conn:
-                conn.execute(
-                    "UPDATE reminders SET last_fired = ? WHERE id = ?",
-                    (ts, reminder_id),
-                )
-                conn.execute(
-                    "UPDATE reminders SET enabled = 0"
-                    " WHERE id = ? AND type = 'once'",
+                row = conn.execute(
+                    "SELECT type, schedule_dts FROM reminders WHERE id = ?",
                     (reminder_id,),
-                )
+                ).fetchone()
+                if row and row["type"] == "scheduled":
+                    try:
+                        dts = json.loads(row["schedule_dts"] or "[]")
+                    except Exception:
+                        dts = []
+                    dts = [d for d in dts if d[:16] != now_str]
+                    conn.execute(
+                        "UPDATE reminders"
+                        " SET schedule_dts = ?, last_fired = ?, enabled = ?"
+                        " WHERE id = ?",
+                        (json.dumps(dts), ts, 0 if not dts else 1, reminder_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE reminders SET last_fired = ? WHERE id = ?",
+                        (ts, reminder_id),
+                    )
+                    conn.execute(
+                        "UPDATE reminders SET enabled = 0"
+                        " WHERE id = ? AND type = 'once'",
+                        (reminder_id,),
+                    )
                 conn.commit()
 
     def get_due(self) -> List[Dict[str, Any]]:
@@ -107,4 +137,14 @@ class RemindersManager:
                 if r["daily_hm"] == now_hm:
                     if not r["last_fired"] or r["last_fired"][:10] != today_str:
                         result.append(r)
+            elif r["type"] == "scheduled" and r["schedule_dts"]:
+                try:
+                    dts = json.loads(r["schedule_dts"])
+                except Exception:
+                    dts = []
+                for dt_str in dts:
+                    if dt_str[:16] == now_str:
+                        if not r["last_fired"] or r["last_fired"][:16] != now_str:
+                            result.append(r)
+                        break
         return result
