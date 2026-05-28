@@ -2416,11 +2416,12 @@ class MainWindow(ctk.CTk):
     # ── обновления ────────────────────────────────────────────────────────────
 
     def _check_for_updates(self):
-        """Запрашивает последний релиз с gitverse.ru в фоновом потоке."""
-        import threading, urllib.request, json as _json
+        """Запрашивает последний релиз с GitHub в фоновом потоке."""
+        import threading, urllib.request, json as _json, queue as _queue
 
         _SPIN     = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         _spin_job = [None]
+        _q        = _queue.SimpleQueue()
 
         def _tick(i: int = 0):
             if not hasattr(self, "_ham_ver_lbl"):
@@ -2456,18 +2457,18 @@ class MainWindow(ctk.CTk):
             try:
                 url = "https://api.github.com/repos/Melodic-Gambit/Hunch/releases"
                 req = urllib.request.Request(url, headers={
-                    "User-Agent":         "Hunch-Desktop",
-                    "Accept":             "application/vnd.github+json",
+                    "User-Agent":           "Hunch-Desktop",
+                    "Accept":               "application/vnd.github+json",
                     "X-GitHub-Api-Version": "2022-11-28",
                 })
                 with urllib.request.urlopen(req, timeout=6) as resp:
                     data = _json.loads(resp.read().decode())
                 if not data:
-                    self.after(0, _stop_spin)
+                    _q.put(("done", None, None))
                     return
                 latest_tag = data[0].get("tag_name", "").strip()
                 if not latest_tag:
-                    self.after(0, _stop_spin)
+                    _q.put(("done", None, None))
                     return
                 installer_url = ""
                 for _asset in data[0].get("assets", []):
@@ -2476,16 +2477,40 @@ class MainWindow(ctk.CTk):
                         break
                 if _parse_ver(latest_tag) > _parse_ver(
                         getattr(self, "_version", "0.0.0")):
-                    self.after(0, lambda t=latest_tag, u=installer_url: self._show_update_toast(t, u))
-                self.after(0, _stop_spin)
+                    _q.put(("update", latest_tag, installer_url))
+                else:
+                    _q.put(("done", None, None))
             except Exception as _err:
-                self.after(0, _stop_spin)
-                _msg = f"Проверка обновлений не выполнена: {type(_err).__name__}: {_err}"
-                self.after(0, lambda m=_msg: self._add_notification(
-                    "Система", message=m, system=True))
+                _q.put(("error",
+                        f"Проверка обновлений не выполнена: {type(_err).__name__}: {_err}",
+                        None))
+
+        def _poll():
+            try:
+                if not self.winfo_exists():
+                    return
+            except Exception:
+                return
+            try:
+                item = _q.get_nowait()
+            except _queue.Empty:
+                self.after(150, _poll)
+                return
+            _stop_spin()
+            if item[0] == "update":
+                try:
+                    self._show_update_toast(item[1], item[2])
+                except Exception:
+                    pass
+            elif item[0] == "error":
+                try:
+                    self._add_notification("Система", message=item[1], system=True)
+                except Exception:
+                    pass
 
         _tick()
         threading.Thread(target=_fetch, daemon=True).start()
+        self.after(150, _poll)
 
     def _show_update_toast(self, new_version: str, installer_url: str = ""):
         """Показывает уведомление об обновлении по центру окна."""
