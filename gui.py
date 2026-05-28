@@ -4171,10 +4171,10 @@ class MainWindow(ctk.CTk):
 
     _C_HEADERS  = ("●", "Название", "Тип БД", "Хост", "Порт",
                    "Имя БД", "Пользователь", "Пароль", "Кодировка",
-                   "Обновлять панель каждые", "", "")
+                   "Обновлять панель каждые", "", "", "")
     # weight=0 → фиксированная колонка (статус/кнопки), >0 → пропорциональная
-    _C_WEIGHTS  = (0,  3,  2,  3,  0,  3,  2,  1,  1,  2,  0,  0)
-    _C_MIN_W    = (28, 100, 70, 90, 50, 90, 80, 60, 60, 90, 90, 90)
+    _C_WEIGHTS  = (0,  3,  2,  3,  0,  3,  2,  1,  1,  2,  0,  0,  0)
+    _C_MIN_W    = (28, 100, 70, 90, 50, 90, 80, 60, 60, 90, 90, 90, 90)
 
     def setup_connections_tab(self):
         self.frame_connections.grid_columnconfigure(0, weight=1)
@@ -4200,6 +4200,10 @@ class MainWindow(ctk.CTk):
 
         ctk.CTkLabel(conn_toolbar, text="🔍",
                      font=ctk.CTkFont(size=20)).pack(side="right", padx=(16, 6), anchor="center")
+
+        ctk.CTkButton(conn_toolbar, text="📥 Импорт", width=100, height=28,
+                      fg_color=("gray55", "gray35"), hover_color=("gray45", "gray25"),
+                      command=self._import_connection).pack(side="left", padx=(0, 8))
 
         self._connections_scroll = ctk.CTkScrollableFrame(
             self.frame_connections, fg_color="transparent")
@@ -4334,6 +4338,14 @@ class MainWindow(ctk.CTk):
                     hover_color=("#C62828", "#B71C1C"),
                     command=lambda n=display_name: self._delete_db_by_name(n)
                 ).grid(row=r, column=11, padx=6, pady=3)
+
+                ctk.CTkButton(
+                    tbl, text="Экспорт",
+                    width=self._C_MIN_W[12], height=26,
+                    fg_color=("gray55", "gray35"),
+                    hover_color=("gray45", "gray25"),
+                    command=lambda n=display_name: self._export_connection(n)
+                ).grid(row=r, column=12, padx=6, pady=3)
 
                 # ── контекстное меню на строке ────────────────────────────────
                 for child in tbl.grid_slaves(row=r):
@@ -4481,6 +4493,163 @@ class MainWindow(ctk.CTk):
             else:
                 messagebox.showerror("Ошибка", f"Не удалось удалить '{name}'")
 
+    def _export_connection(self, name: str):
+        filename = self._find_conn_file(name)
+        if not filename:
+            messagebox.showwarning("Предупреждение", "Файл подключения не найден")
+            return
+        config_path = os.path.join(self.data_manager.config_dir, filename)
+        try:
+            with open(config_path, encoding="utf-8") as fh:
+                config = json.load(fh)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось прочитать конфигурацию:\n{e}")
+            return
+        export_config = {k: v for k, v in config.items()
+                         if k not in ("password", "password_in_keyring")}
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            defaultextension=".json",
+            initialfile=filename,
+            filetypes=[("JSON файлы", "*.json"), ("Все файлы", "*.*")],
+            title=f"Экспорт подключения «{name}»",
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(export_config, fh, ensure_ascii=False, indent=4)
+            messagebox.showinfo("Экспорт", f"Подключение «{name}» сохранено:\n{path}")
+        except OSError as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+
+    def _import_connection(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            defaultextension=".json",
+            filetypes=[("JSON файлы", "*.json"), ("Все файлы", "*.*")],
+            title="Импорт подключения из файла",
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                config = json.load(fh)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось прочитать файл:\n{e}")
+            return
+        if not isinstance(config, dict):
+            messagebox.showerror("Ошибка",
+                                 "Неверный формат файла (ожидается JSON-объект)")
+            return
+
+        default_name = os.path.splitext(os.path.basename(path))[0]
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.withdraw()
+        dlg.title("Импорт подключения")
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        dlg.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(dlg, text="Имя подключения:", anchor="w"
+                     ).grid(row=0, column=0, padx=(16, 8), pady=(16, 4), sticky="w")
+        name_entry = ctk.CTkEntry(dlg, width=260)
+        name_entry.insert(0, default_name)
+        name_entry.grid(row=0, column=1, padx=(0, 16), pady=(16, 4), sticky="ew")
+
+        ctk.CTkLabel(dlg, text="Пароль:", anchor="w"
+                     ).grid(row=1, column=0, padx=(16, 8), pady=(0, 4), sticky="w")
+        pwd_entry = ctk.CTkEntry(dlg, width=260, show="*",
+                                  placeholder_text="Оставьте пустым, если не требуется")
+        pwd_entry.grid(row=1, column=1, padx=(0, 16), pady=(0, 4), sticky="ew")
+
+        error_lbl = ctk.CTkLabel(dlg, text="", text_color=("#DC2626", "#F87171"),
+                                  font=ctk.CTkFont(size=11), anchor="w")
+        error_lbl.grid(row=2, column=0, columnspan=2, padx=16, pady=(0, 2), sticky="w")
+
+        _result = [None]
+        _INVALID_CONN = re.compile(r'[\\/*?:"<>|]')
+
+        def _ok():
+            n = name_entry.get().strip()
+            if not n:
+                error_lbl.configure(text="Введите имя подключения.")
+                return
+            if _INVALID_CONN.search(n):
+                error_lbl.configure(text='Нельзя: \\ / * ? : " < > |')
+                return
+            _result[0] = (n, pwd_entry.get())
+            _close()
+
+        def _close():
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", _close)
+        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_row.grid(row=3, column=0, columnspan=2, pady=(8, 16))
+        ctk.CTkButton(btn_row, text="Импортировать", width=140,
+                      command=_ok).grid(row=0, column=0, padx=(0, 8))
+        ctk.CTkButton(btn_row, text="Отмена", width=90,
+                      fg_color=("gray60", "gray40"),
+                      hover_color=("gray50", "gray30"),
+                      command=_close).grid(row=0, column=1)
+
+        dlg.bind("<Return>", lambda e: _ok())
+
+        dlg.update_idletasks()
+        pw = self.winfo_width(); ph = self.winfo_height()
+        px = self.winfo_rootx(); py = self.winfo_rooty()
+        w = dlg.winfo_reqwidth(); h = dlg.winfo_reqheight()
+        dlg.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        dlg.deiconify()
+        name_entry.focus()
+
+        def _safe_grab():
+            try:
+                dlg.grab_set()
+            except Exception:
+                pass
+        dlg.after(20, _safe_grab)
+        dlg.lift()
+        self.wait_window(dlg)
+
+        if not _result[0]:
+            return
+
+        name, password = _result[0]
+        filename = f"{name}.json"
+        dest_path = os.path.join(self.data_manager.config_dir, filename)
+        if os.path.exists(dest_path):
+            if not messagebox.askyesno(
+                    "Подтверждение",
+                    f"Подключение «{name}» уже существует. Перезаписать?"):
+                return
+
+        config.pop("password_in_keyring", None)
+        config.pop("password", None)
+        if password:
+            config["password"] = password
+
+        try:
+            os.makedirs(self.data_manager.config_dir, exist_ok=True)
+            with open(dest_path, "w", encoding="utf-8") as fh:
+                json.dump(config, fh, ensure_ascii=False, indent=4)
+        except OSError as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+            return
+
+        self.data_manager.set_db_display_name(filename, name)
+        self.refresh_connections_list()
+        self.log_manager.add_log(f"Импортировано подключение: {name}")
+        messagebox.showinfo("Импорт",
+                            f"Подключение «{name}» успешно импортировано")
+        self._restart_auto_timers()
+
     # ── Запросы ───────────────────────────────────────────────────────────────
 
     _Q_HEADERS  = ("Название", "SQL-запрос", "База данных",
@@ -4496,7 +4665,14 @@ class MainWindow(ctk.CTk):
         dlg.resizable(True, True)
         dlg.minsize(700, 380)
         dlg.transient(self)
-        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        def _on_close():
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", _on_close)
 
         # ── заголовок ─────────────────────────────────────────────────────────
         hdr_row = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -4687,21 +4863,21 @@ class MainWindow(ctk.CTk):
 
         _refresh()
 
-        def _center():
+        dlg.update_idletasks()
+        pw = self.winfo_width(); ph = self.winfo_height()
+        px = self.winfo_rootx(); py = self.winfo_rooty()
+        w  = dlg.winfo_reqwidth()
+        h  = dlg.winfo_reqheight()
+        dlg.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        dlg.deiconify()
+
+        def _safe_grab():
             try:
-                dlg.update_idletasks()
-                pw = self.winfo_width(); ph = self.winfo_height()
-                px = self.winfo_rootx(); py = self.winfo_rooty()
-                w  = dlg.winfo_reqwidth()
-                h  = dlg.winfo_reqheight()
-                dlg.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
-                dlg.deiconify()
                 dlg.grab_set()
-                dlg.lift()
             except Exception:
                 pass
-
-        dlg.after(60, _center)
+        dlg.after(20, _safe_grab)
+        dlg.lift()
 
     def setup_queries_tab(self):
         self.frame_queries.grid_columnconfigure(0, weight=1)
@@ -5148,6 +5324,8 @@ class MainWindow(ctk.CTk):
         menu.add_command(label="Переподключить / Проверить",
                          command=lambda: self._retest_conn_by_name(display_name))
         menu.add_separator()
+        menu.add_command(label="Экспорт",
+                         command=lambda: self._export_connection(display_name))
         menu.add_command(label="Удалить",
                          command=lambda: self._delete_db_by_name(display_name))
         menu.add_separator()
@@ -8025,7 +8203,14 @@ class MainWindow(ctk.CTk):
         dlg.title("Добавить напоминание")
         dlg.resizable(False, False)
         dlg.transient(self)
-        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        def _on_close():
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", _on_close)
 
         dlg.grid_columnconfigure(0, weight=1)
 
@@ -8161,7 +8346,7 @@ class MainWindow(ctk.CTk):
                     schedule_dts=json.dumps(vals),
                 )
             self._refresh_reminders_list()
-            dlg.destroy()
+            _on_close()
 
         btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
         btn_row.grid(row=8, column=0, pady=(4, 16))
@@ -8170,26 +8355,26 @@ class MainWindow(ctk.CTk):
         ctk.CTkButton(btn_row, text="Отмена", width=80,
                       fg_color=("gray60", "gray40"),
                       hover_color=("gray50", "gray30"),
-                      command=dlg.destroy).grid(row=0, column=1)
+                      command=_on_close).grid(row=0, column=1)
 
-        def _center():
+        dlg.update_idletasks()
+        pw = self.winfo_width()
+        ph = self.winfo_height()
+        w  = dlg.winfo_reqwidth()
+        h  = dlg.winfo_reqheight()
+        dlg.geometry(
+            f"+{self.winfo_rootx() + (pw - w) // 2}"
+            f"+{self.winfo_rooty() + (ph - h) // 2}"
+        )
+        dlg.deiconify()
+
+        def _safe_grab():
             try:
-                dlg.update_idletasks()
-                pw = self.winfo_width()
-                ph = self.winfo_height()
-                w  = dlg.winfo_reqwidth()
-                h  = dlg.winfo_reqheight()
-                dlg.geometry(
-                    f"+{self.winfo_rootx() + (pw - w) // 2}"
-                    f"+{self.winfo_rooty() + (ph - h) // 2}"
-                )
-                dlg.deiconify()
                 dlg.grab_set()
-                dlg.lift()
             except Exception:
                 pass
-
-        dlg.after(60, _center)
+        dlg.after(20, _safe_grab)
+        dlg.lift()
 
     # ── Шедулер напоминаний ───────────────────────────────────────────────────
 
