@@ -64,6 +64,18 @@ def test_existing_value_overrides_default(tmp_path):
     assert sm.get_setting("check_updates") is False
 
 
+def test_backfill_is_in_memory_only_not_written_to_disk(tmp_path):
+    # load_settings() merges defaults in memory but never persists them back;
+    # the file on disk stays unchanged until the next set_setting() call.
+    f = str(tmp_path / "settings.json")
+    with open(f, "w", encoding="utf-8") as fh:
+        json.dump({"theme": "light", "refresh_interval": 60}, fh)
+    SettingsManager(settings_file=f)
+    with open(f, encoding="utf-8") as fh:
+        on_disk = json.load(fh)
+    assert "check_updates" not in on_disk
+
+
 # ── интервалы запросов ────────────────────────────────────────────────────────
 
 def test_set_and_get_query_interval(sm):
