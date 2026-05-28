@@ -125,7 +125,8 @@ class ResultTable(ctk.CTkFrame):
 
         # ── cell overlay canvas (cell border highlight) ───────────────────────
         self._cell_overlay = tk.Canvas(self, highlightthickness=0, bd=0, cursor="")
-        for seq in ("<Button-1>", "<Button-3>", "<Double-Button-1>",
+        for seq in ("<Button-1>", "<ButtonRelease-1>",
+                    "<Button-3>", "<ButtonRelease-3>",
                     "<Motion>", "<Leave>", "<MouseWheel>"):
             self._cell_overlay.bind(seq, self._forward_to_tree)
 
@@ -256,6 +257,11 @@ class ResultTable(ctk.CTkFrame):
 
     def _render(self):
         # Reset cell selection whenever table content changes (page, sort, new data)
+        if hasattr(self, "_scroll_redraw_id"):
+            try:
+                self.after_cancel(self._scroll_redraw_id)
+            except Exception:
+                pass
         self._clear_cell_border()
         if self._cell_bar.winfo_ismapped():
             self._cell_bar.grid_remove()
@@ -521,8 +527,13 @@ class ResultTable(ctk.CTkFrame):
 
     def _on_scroll_redraw(self, event=None):
         if self._focused_item and self._focused_col:
+            if hasattr(self, "_scroll_redraw_id"):
+                try:
+                    self.after_cancel(self._scroll_redraw_id)
+                except Exception:
+                    pass
             item, col = self._focused_item, self._focused_col
-            self.after(10, lambda: self._draw_cell_border(item, col))
+            self._scroll_redraw_id = self.after(10, lambda: self._draw_cell_border(item, col))
 
     # ── hover: лампочка ──────────────────────────────────────────────────────
 
