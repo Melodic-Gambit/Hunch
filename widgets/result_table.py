@@ -22,6 +22,8 @@ class ResultTable(ctk.CTkFrame):
         self._sort_rev: bool = False
         self._current_page: int = 0
         self._focused_col: Optional[str] = None
+        self._focused_item: Optional[str] = None
+        self._selected_cell_value: str = ""
         self._hidden_keys: set = set()
         self._hidden_rows: dict = {}
         self._hovered_item: str = ""
@@ -51,10 +53,12 @@ class ResultTable(ctk.CTkFrame):
         self._tree.bind("<Next>",  lambda e: self._page_next()  or "break")
         self._tree.bind("<Home>",  lambda e: self._page_first() or "break")
         self._tree.bind("<End>",   lambda e: self._page_last()  or "break")
+        self._tree.bind("<MouseWheel>",       self._on_scroll_redraw, add="+")
+        self._tree.bind("<<TreeviewScroll>>", self._on_scroll_redraw, add="+")
 
-        # ── pagination bar (row=2, скрыта по умолчанию) ──────────────────────
+        # ── pagination bar (row=3, скрыта по умолчанию) ──────────────────────
         self._pag_bar = ctk.CTkFrame(self, fg_color="transparent", height=1)
-        self._pag_bar.grid(row=2, column=0, columnspan=2, sticky="ew", padx=4, pady=(2, 2))
+        self._pag_bar.grid(row=3, column=0, columnspan=2, sticky="ew", padx=4, pady=(2, 2))
         self._pag_bar.grid_columnconfigure(1, weight=1)
 
         self._btn_prev = ctk.CTkButton(
@@ -86,6 +90,44 @@ class ResultTable(ctk.CTkFrame):
         self._btn_next.grid(row=0, column=2, padx=(4, 0))
 
         self._pag_bar.grid_remove()
+
+        # ── cell info bar (row=2, hidden by default) ──────────────────────────
+        self._cell_bar = ctk.CTkFrame(self, height=28, fg_color=("gray85", "gray20"))
+        self._cell_bar.grid(row=2, column=0, columnspan=2, sticky="ew", padx=4, pady=(1, 1))
+        self._cell_bar.grid_columnconfigure(1, weight=1)
+        self._cell_bar.grid_remove()
+
+        self._cell_bar_col_lbl = ctk.CTkLabel(
+            self._cell_bar, text="",
+            font=ctk.CTkFont(size=11),
+            text_color=("gray40", "gray65"),
+            anchor="w",
+        )
+        self._cell_bar_col_lbl.grid(row=0, column=0, padx=(6, 8), sticky="w")
+
+        self._cell_bar_val_lbl = ctk.CTkLabel(
+            self._cell_bar, text="",
+            font=ctk.CTkFont(size=11),
+            text_color=("gray15", "gray85"),
+            anchor="w",
+        )
+        self._cell_bar_val_lbl.grid(row=0, column=1, padx=(0, 4), sticky="ew")
+
+        self._cell_bar_copy_btn = ctk.CTkButton(
+            self._cell_bar, text="📋", width=28, height=22,
+            fg_color="transparent",
+            hover_color=("gray75", "gray35"),
+            text_color=("gray10", "gray90"),
+            font=ctk.CTkFont(size=12),
+            command=self._copy_selected_cell,
+        )
+        self._cell_bar_copy_btn.grid(row=0, column=2, padx=(0, 4))
+
+        # ── cell overlay canvas (cell border highlight) ───────────────────────
+        self._cell_overlay = tk.Canvas(self, highlightthickness=0, bd=0, cursor="")
+        for seq in ("<Button-1>", "<Button-3>", "<Double-Button-1>",
+                    "<Motion>", "<Leave>", "<MouseWheel>"):
+            self._cell_overlay.bind(seq, self._forward_to_tree)
 
         self._empty_lbl = ctk.CTkLabel(
             self,
@@ -213,6 +255,13 @@ class ResultTable(ctk.CTkFrame):
             self._render()
 
     def _render(self):
+        # Reset cell selection whenever table content changes (page, sort, new data)
+        self._clear_cell_border()
+        if self._cell_bar.winfo_ismapped():
+            self._cell_bar.grid_remove()
+        self._focused_item = None
+        self._focused_col = None
+
         self._tree.delete(*self._tree.get_children())
         if not self._columns:
             self._tree.grid_remove()
@@ -228,7 +277,7 @@ class ResultTable(ctk.CTkFrame):
 
         total = self._total_pages()
         if total > 1:
-            self.grid_rowconfigure(2, weight=0)
+            self.grid_rowconfigure(3, weight=0)
             self._pag_bar.grid()
             cur = self._current_page
             start_row = cur * _PAGE_SIZE + 1
@@ -365,8 +414,24 @@ class ResultTable(ctk.CTkFrame):
             pass
 
     def _on_cell_click(self, event):
-        if self._tree.identify_region(event.x, event.y) == "cell":
-            self._focused_col = self._tree.identify_column(event.x)
+        if self._tree.identify_region(event.x, event.y) != "cell":
+            return
+        col  = self._tree.identify_column(event.x)
+        item = self._tree.identify_row(event.y)
+        self._focused_col  = col
+        self._focused_item = item
+        if col in ("#1", "#2", "#3") or not item:
+            return
+        col_idx = int(col.lstrip("#")) - 1
+        vals = self._tree.item(item, "values")
+        if col_idx >= len(vals):
+            return
+        name_idx = col_idx - 3
+        col_name = self._columns[name_idx] if 0 <= name_idx < len(self._columns) else col
+        cell_val = str(vals[col_idx])
+        self._selected_cell_value = cell_val
+        self._show_cell_bar(col_name, cell_val)
+        self._draw_cell_border(item, col)
 
     def _on_ctrl_keypress(self, event):
         if event.keycode == 67:
@@ -384,6 +449,80 @@ class ResultTable(ctk.CTkFrame):
                 return "break"
         self._clip("\t".join(str(v) for v in values[3:]))  # skip _bulb_, _copy_, _row_
         return "break"
+
+    # ── cell info bar ─────────────────────────────────────────────────────────
+
+    def _show_cell_bar(self, col_name: str, value: str):
+        preview = value if len(value) <= 80 else value[:77] + "…"
+        self._cell_bar_col_lbl.configure(text=f"Колонка: {col_name}")
+        self._cell_bar_val_lbl.configure(text=preview)
+        self._cell_bar_copy_btn.configure(text="📋")
+        if not self._cell_bar.winfo_ismapped():
+            self._cell_bar.grid()
+
+    def _copy_selected_cell(self):
+        if self._selected_cell_value:
+            self._clip(self._selected_cell_value)
+            self._cell_bar_copy_btn.configure(text="✓")
+            self.after(600, lambda: self._cell_bar_copy_btn.configure(text="📋"))
+
+    # ── cell border overlay ───────────────────────────────────────────────────
+
+    def _draw_cell_border(self, item: str, col_id: str):
+        self._cell_overlay.place_forget()
+        self._cell_overlay.delete("all")
+        try:
+            bbox = self._tree.bbox(item, col_id)
+        except Exception:
+            return
+        if not bbox:
+            return
+        x, y, w, h = bbox
+        tags = self._tree.item(item, "tags")
+        dark = ctk.get_appearance_mode() == "Dark"
+        bg = ("#333333" if dark else "#d0d0d0") if "r1" in tags else ("#2b2b2b" if dark else "#dbdbdb")
+        fg = "#dcddde" if dark else "#1a1a1a"
+        tree_x = self._tree.winfo_x()
+        tree_y = self._tree.winfo_y()
+        self._cell_overlay.configure(bg=bg)
+        self._cell_overlay.place(x=tree_x + x, y=tree_y + y, width=w, height=h)
+        self._cell_overlay.lift()
+        col_idx = int(col_id.lstrip("#")) - 1
+        vals = self._tree.item(item, "values")
+        if col_idx < len(vals):
+            self._cell_overlay.create_text(
+                4, h // 2, text=str(vals[col_idx]),
+                fill=fg, font=("Segoe UI", 10), anchor="w",
+            )
+        self._cell_overlay.create_rectangle(
+            1, 1, w - 2, h - 2,
+            outline=theme_colors.accent(), width=2, fill="",
+        )
+
+    def _clear_cell_border(self):
+        self._cell_overlay.delete("all")
+        self._cell_overlay.place_forget()
+
+    def _forward_to_tree(self, event):
+        dx = self._cell_overlay.winfo_x() - self._tree.winfo_x()
+        dy = self._cell_overlay.winfo_y() - self._tree.winfo_y()
+        tx, ty = event.x + dx, event.y + dy
+        t = event.type
+        if t == tk.EventType.ButtonPress:
+            self._tree.event_generate(f"<Button-{event.num}>", x=tx, y=ty)
+        elif t == tk.EventType.ButtonRelease:
+            self._tree.event_generate(f"<ButtonRelease-{event.num}>", x=tx, y=ty)
+        elif t == tk.EventType.Motion:
+            self._tree.event_generate("<Motion>", x=tx, y=ty)
+        elif t == tk.EventType.Leave:
+            self._tree.event_generate("<Leave>", x=tx, y=ty)
+        elif t == tk.EventType.MouseWheel:
+            self._tree.event_generate("<MouseWheel>", x=tx, y=ty, delta=event.delta)
+
+    def _on_scroll_redraw(self, event=None):
+        if self._focused_item and self._focused_col:
+            item, col = self._focused_item, self._focused_col
+            self.after(10, lambda: self._draw_cell_border(item, col))
 
     # ── hover: лампочка ──────────────────────────────────────────────────────
 
