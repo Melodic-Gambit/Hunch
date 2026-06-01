@@ -2233,6 +2233,7 @@ class MainWindow(ctk.CTk):
         self._alert_last_fired:     dict = {}  # {(query_file, type): monotonic} дебаунс алертов
         self._alert_history:        list = []  # [{ts, query_name, query_file, type, detail}]
         self._notif_row_widgets:    dict = {}  # {notif_id: ([widgets], orig_bg)} для мерцания
+        self._notif_action_btns:    dict = {}  # {notif_id: CTkButton} кнопка действия строки
         self._highlight_notif_id:   Optional[int] = None  # строка для мерцания
         self._selected_notif_id:    Optional[int] = None  # выделенная строка для копирования
         self._query_results:        dict = {}   # {filename: {"rows": [...], "columns": [...]}}
@@ -7917,7 +7918,7 @@ class MainWindow(ctk.CTk):
             self.set_notification_badge(False)
         else:
             self.set_notification_badge(True)
-        self.refresh_notifications_list()
+        self._update_notif_read_state(notif_id)
 
     def _mark_notif_unread(self, notif_id: int):
         for n in self._notifications:
@@ -7925,7 +7926,64 @@ class MainWindow(ctk.CTk):
                 n["read"] = False
                 break
         self.set_notification_badge(True)
-        self.refresh_notifications_list()
+        self._update_notif_read_state(notif_id)
+
+    def _update_notif_read_state(self, notif_id: int):
+        """Быстрое обновление цвета строки и кнопки без пересоздания всего списка."""
+        row_data = self._notif_row_widgets.get(notif_id)
+        if not row_data:
+            self.refresh_notifications_list()
+            return
+        widgets, bg = row_data
+        n = next((x for x in self._notifications if x["id"] == notif_id), None)
+        if not n:
+            self.refresh_notifications_list()
+            return
+
+        read = n["read"]
+        dim  = ("gray55", "gray65")
+        norm = ("gray10", "white")
+
+        # Для уведомлений с цветными (+/-) метками, при снятии прочтения
+        # нужно восстанавливать green/red — делаем полный перерисов (редкий случай)
+        if n.get("added") is not None and not read:
+            self.refresh_notifications_list()
+            return
+
+        tc = dim if read else norm
+        for w in widgets:
+            try:
+                w.configure(text_color=tc)
+            except Exception:
+                # CTkFrame (msg_frame для "added") — обновляем дочерние метки
+                if isinstance(w, ctk.CTkFrame):
+                    for child in w.winfo_children():
+                        try:
+                            child.configure(text_color=tc)
+                        except Exception:
+                            pass
+
+        btn = self._notif_action_btns.get(notif_id)
+        if btn:
+            if read:
+                btn.configure(
+                    text="Не прочитано",
+                    fg_color="transparent",
+                    border_width=1,
+                    border_color=("gray55", "gray45"),
+                    hover_color=("gray80", "gray30"),
+                    text_color=("gray50", "gray60"),
+                    command=lambda nid=notif_id: self._mark_notif_unread(nid),
+                )
+            else:
+                btn.configure(
+                    text="◎ Прочитать",
+                    fg_color=[theme_colors.accent(), theme_colors.hover()],
+                    hover_color=[theme_colors.hover(), theme_colors.dark()],
+                    text_color=("gray10", "white"),
+                    border_width=0,
+                    command=lambda nid=notif_id: self._mark_notif_read(nid),
+                )
 
     def _mark_all_read(self):
         self._highlight_notif_id = None
@@ -8180,14 +8238,23 @@ class MainWindow(ctk.CTk):
                          text_color=("gray50", "gray55")).grid(
                 row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 6))
 
-            # Удалить
+            # Кнопки действий
             _rid = r["id"]
-            ctk.CTkButton(card, text="✕", width=28, height=28,
+            _rdata = dict(r)
+            btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+            btn_frame.grid(row=0, column=2, rowspan=2, padx=(0, 6), pady=6)
+            ctk.CTkButton(btn_frame, text="✏", width=28, height=28,
+                          fg_color="transparent",
+                          hover_color=("gray70", "gray35"),
+                          text_color=("gray40", "gray60"),
+                          command=lambda d=_rdata: self._open_add_reminder_dialog(edit_data=d)
+                          ).grid(row=0, column=0, padx=(0, 2))
+            ctk.CTkButton(btn_frame, text="✕", width=28, height=28,
                           fg_color="transparent",
                           hover_color=("gray70", "gray35"),
                           text_color=("gray40", "gray60"),
                           command=lambda i=_rid: self._delete_reminder(i)
-                          ).grid(row=0, column=2, rowspan=2, padx=(0, 6), pady=6)
+                          ).grid(row=0, column=1)
 
     def _delete_reminder(self, reminder_id: int):
         self.reminders_manager.delete(reminder_id)
@@ -8197,10 +8264,10 @@ class MainWindow(ctk.CTk):
         """Открывает диалог добавления напоминания, предзаполненный значением строки."""
         self._open_add_reminder_dialog(prefill_text=prefill_text)
 
-    def _open_add_reminder_dialog(self, prefill_text: str = ""):
+    def _open_add_reminder_dialog(self, prefill_text: str = "", edit_data: dict | None = None):
         dlg = ctk.CTkToplevel(self)
         dlg.withdraw()
-        dlg.title("Добавить напоминание")
+        dlg.title("Редактировать напоминание" if edit_data else "Добавить напоминание")
         dlg.resizable(False, False)
         dlg.transient(self)
 
@@ -8214,7 +8281,8 @@ class MainWindow(ctk.CTk):
 
         dlg.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(dlg, text="Добавить напоминание",
+        ctk.CTkLabel(dlg,
+                     text="Редактировать напоминание" if edit_data else "Добавить напоминание",
                      font=ctk.CTkFont(size=14, weight="bold")
                      ).grid(row=0, column=0, padx=20, pady=(16, 8), sticky="w")
 
@@ -8223,11 +8291,13 @@ class MainWindow(ctk.CTk):
                      ).grid(row=1, column=0, padx=20, pady=(0, 2), sticky="w")
         comment_entry = ctk.CTkEntry(dlg, width=340, placeholder_text="Введите текст…")
         comment_entry.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
-        if prefill_text:
+        if edit_data:
+            comment_entry.insert(0, edit_data.get("comment", ""))
+        elif prefill_text:
             comment_entry.insert(0, prefill_text)
 
         # Тип: однократно / ежедневно / по графику
-        type_var = tk.StringVar(value="once")
+        type_var = tk.StringVar(value=edit_data["type"] if edit_data else "once")
         type_frame = ctk.CTkFrame(dlg, fg_color="transparent")
         type_frame.grid(row=3, column=0, padx=20, pady=(0, 6), sticky="w")
         ctk.CTkRadioButton(type_frame, text="Однократно", variable=type_var,
@@ -8271,6 +8341,20 @@ class MainWindow(ctk.CTk):
             _e.grid(row=_si + 1, column=1, padx=(6, 0), pady=(4, 0), sticky="w")
             sched_entries.append(_e)
 
+        # Предзаполнение при редактировании
+        if edit_data:
+            if edit_data.get("once_dt"):
+                once_entry.insert(0, edit_data["once_dt"])
+            if edit_data.get("daily_hm"):
+                daily_entry.insert(0, edit_data["daily_hm"])
+            if edit_data.get("schedule_dts"):
+                try:
+                    _dts = json.loads(edit_data["schedule_dts"])
+                except Exception:
+                    _dts = []
+                for _si, _dt in enumerate(_dts[:3]):
+                    sched_entries[_si].insert(0, _dt)
+
         error_lbl = ctk.CTkLabel(dlg, text="", text_color=("#DC2626", "#F87171"),
                                  font=ctk.CTkFont(size=11), anchor="w")
         error_lbl.grid(row=7, column=0, padx=20, pady=(0, 4), sticky="w")
@@ -8309,7 +8393,14 @@ class MainWindow(ctk.CTk):
                 if dt < datetime.datetime.now():
                     error_lbl.configure(text=f"Дата «{val}» уже в прошлом.")
                     return
-                self.reminders_manager.add(comment, "once", once_dt=val)
+                try:
+                    if edit_data:
+                        self.reminders_manager.update(edit_data["id"], comment, "once", once_dt=val, reset_state=True)
+                    else:
+                        self.reminders_manager.add(comment, "once", once_dt=val)
+                except Exception as e:
+                    error_lbl.configure(text=f"Ошибка сохранения: {e}")
+                    return
             elif rtype == "daily":
                 val = daily_entry.get().strip()
                 if not val:
@@ -8320,7 +8411,17 @@ class MainWindow(ctk.CTk):
                 except ValueError:
                     error_lbl.configure(text="Формат времени: ЧЧ:ММ")
                     return
-                self.reminders_manager.add(comment, "daily", daily_hm=val)
+                try:
+                    if edit_data:
+                        # сбрасываем last_fired только если изменилось время или
+                        # напоминание было отключено; иначе двойной показ в тот же день
+                        _reset = (edit_data.get("daily_hm") != val) or (not edit_data.get("enabled"))
+                        self.reminders_manager.update(edit_data["id"], comment, "daily", daily_hm=val, reset_state=_reset)
+                    else:
+                        self.reminders_manager.add(comment, "daily", daily_hm=val)
+                except Exception as e:
+                    error_lbl.configure(text=f"Ошибка сохранения: {e}")
+                    return
             else:
                 vals = []
                 for _e in sched_entries:
@@ -8341,10 +8442,26 @@ class MainWindow(ctk.CTk):
                 if not vals:
                     error_lbl.configure(text="Укажите хотя бы одну дату и время.")
                     return
-                self.reminders_manager.add(
-                    comment, "scheduled",
-                    schedule_dts=json.dumps(vals),
-                )
+                try:
+                    if edit_data:
+                        try:
+                            _old_dts = set(json.loads(edit_data.get("schedule_dts") or "[]"))
+                        except Exception:
+                            _old_dts = set()
+                        _reset = (set(vals) != _old_dts) or (not edit_data.get("enabled"))
+                        self.reminders_manager.update(
+                            edit_data["id"], comment, "scheduled",
+                            schedule_dts=json.dumps(vals),
+                            reset_state=_reset,
+                        )
+                    else:
+                        self.reminders_manager.add(
+                            comment, "scheduled",
+                            schedule_dts=json.dumps(vals),
+                        )
+                except Exception as e:
+                    error_lbl.configure(text=f"Ошибка сохранения: {e}")
+                    return
             self._refresh_reminders_list()
             _on_close()
 
@@ -9858,6 +9975,7 @@ class MainWindow(ctk.CTk):
                 row=0, column=i, padx=6, pady=5, sticky="nsew")
 
         self._notif_row_widgets.clear()
+        self._notif_action_btns.clear()
 
         # ── копирование строки Ctrl+C / Ctrl+С (рус.) ────────────────────────
         _NOTIF_SEL = ("#B2DFDB", "#1A4A48")
@@ -9965,7 +10083,7 @@ class MainWindow(ctk.CTk):
                     pass
 
             if read:
-                ctk.CTkButton(
+                _action_btn = ctk.CTkButton(
                     tbl,
                     text="Не прочитано",
                     width=110, height=26,
@@ -9975,16 +10093,20 @@ class MainWindow(ctk.CTk):
                     hover_color=("gray80", "gray30"),
                     text_color=("gray50", "gray60"),
                     command=lambda nid=notif["id"]: self._mark_notif_unread(nid),
-                ).grid(row=r, column=4, padx=6, pady=3)
+                )
             else:
-                ctk.CTkButton(
+                _action_btn = ctk.CTkButton(
                     tbl,
                     text="◎ Прочитать",
                     width=110, height=26,
                     fg_color=[theme_colors.accent(), theme_colors.hover()],
                     hover_color=[theme_colors.hover(), theme_colors.dark()],
+                    text_color=("gray10", "white"),
+                    border_width=0,
                     command=lambda nid=notif["id"]: self._mark_notif_read(nid),
-                ).grid(row=r, column=4, padx=6, pady=3)
+                )
+            _action_btn.grid(row=r, column=4, padx=6, pady=3)
+            self._notif_action_btns[notif["id"]] = _action_btn
 
         # восстанавливаем выделение если строка ещё существует после перерисовки
         if self._selected_notif_id is not None:

@@ -73,6 +73,40 @@ class RemindersManager:
                 conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
                 conn.commit()
 
+    def update(self, reminder_id: int, comment: str, rtype: str,
+               once_dt: str = None, daily_hm: str = None,
+               schedule_dts: str = None, reset_state: bool = False) -> None:
+        """Update a reminder in place.
+
+        reset_state=True resets enabled=1 and last_fired=NULL so that a
+        re-scheduled reminder fires again. Pass True when the user edits
+        date/time fields (validation in the caller already ensures future dates).
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    if reset_state:
+                        conn.execute(
+                            "UPDATE reminders"
+                            " SET comment=?, type=?, once_dt=?, daily_hm=?,"
+                            "     schedule_dts=?, enabled=1, last_fired=NULL"
+                            " WHERE id=?",
+                            (comment, rtype, once_dt, daily_hm,
+                             schedule_dts, reminder_id),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE reminders"
+                            " SET comment=?, type=?, once_dt=?, daily_hm=?,"
+                            "     schedule_dts=?"
+                            " WHERE id=?",
+                            (comment, rtype, once_dt, daily_hm,
+                             schedule_dts, reminder_id),
+                        )
+            finally:
+                conn.close()
+
     def list_all(self) -> List[Dict[str, Any]]:
         with self._lock:
             with self._connect() as conn:
