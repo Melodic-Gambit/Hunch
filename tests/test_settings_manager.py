@@ -32,6 +32,7 @@ def test_persists_across_instances(tmp_path):
     f = str(tmp_path / "settings.json")
     sm1 = SettingsManager(settings_file=f)
     sm1.set_setting("color", "blue")
+    sm1.flush()
 
     sm2 = SettingsManager(settings_file=f)
     assert sm2.get_setting("color") == "blue"
