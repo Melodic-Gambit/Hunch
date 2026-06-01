@@ -226,6 +226,12 @@ class DatabaseManager:
                 return rows, cols
             except Exception:
                 try:
+                    if cursor is not None:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+                        cursor = None
                     self.connections.pop(config_name, None)
                     self._conn_last_used.pop(config_name, None)
                     self.connect(config_name)

@@ -2,6 +2,7 @@ import json
 import os
 import datetime
 import decimal
+import threading
 from typing import Dict, Any, Optional
 
 
@@ -24,6 +25,7 @@ class SettingsManager:
     def __init__(self, settings_file: str = "settings.json"):
         self.settings_file = settings_file
         self.settings = self.load_settings()
+        self._save_timer: Optional[threading.Timer] = None
     
     def load_settings(self) -> Dict[str, Any]:
         """Загружает настройки из файла"""
@@ -68,13 +70,27 @@ class SettingsManager:
     def set_setting(self, key: str, value: Any):
         """Устанавливает значение настройки"""
         self.settings[key] = value
-        self.save_settings()
+        self._schedule_save()
     
     def set_query_interval(self, query_name: str, interval: int):
         """Устанавливает интервал обновления для конкретного запроса"""
         if "query_intervals" not in self.settings:
             self.settings["query_intervals"] = {}
         self.settings["query_intervals"][query_name] = interval
+        self._schedule_save()
+
+    def _schedule_save(self):
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+        self._save_timer = threading.Timer(0.5, self.save_settings)
+        self._save_timer.daemon = True
+        self._save_timer.start()
+
+    def flush(self):
+        """Немедленно сохраняет настройки, отменяя отложенный таймер."""
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+            self._save_timer = None
         self.save_settings()
     
     def get_query_interval(self, query_name: str, default: int = 300) -> int:
