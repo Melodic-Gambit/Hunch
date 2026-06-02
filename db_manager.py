@@ -145,14 +145,16 @@ class DatabaseManager:
         elif db_type == "oracle":
             dsn = f"{config['host']}:{config['port']}/{config['database_name']}"
             if oracledb is not None:
-                return oracledb.connect(
+                conn = oracledb.connect(
                     user=config["username"], password=config["password"], dsn=dsn)
             elif cx_Oracle is not None:
-                return cx_Oracle.connect(
+                conn = cx_Oracle.connect(
                     user=config["username"], password=config["password"], dsn=dsn)
             else:
                 raise ImportError(
                     "Драйвер Oracle не установлен (pip install oracledb или cx_Oracle)")
+            conn.autocommit = True
+            return conn
 
         elif db_type == "mssql":
             if pyodbc is None:
