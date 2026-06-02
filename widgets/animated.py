@@ -1172,6 +1172,26 @@ def _cancel_widget_timers(widget):
         pass
 
 
+def _bind_cell_select(widget, value: str, panel: "AnimatedPanel") -> None:
+    """Рекурсивно привязывает <ButtonPress-1> к виджету и его потомкам.
+    При клике сохраняет значение ячейки в panel._selected_value (BUG-66)."""
+    def _on_click(event=None, v=value, p=panel):
+        p._selected_value = v
+        if p._cell_info_lbl is not None:
+            try:
+                display = v[:60] + ("…" if len(v) > 60 else "")
+                p._cell_info_lbl.configure(
+                    text=("> " + display) if display else "> (пусто)")
+            except Exception:
+                pass
+    widget.bind("<ButtonPress-1>", _on_click, add="+")
+    try:
+        for child in widget.winfo_children():
+            _bind_cell_select(child, value, panel)
+    except Exception:
+        pass
+
+
 class AnimatedPanel(tk.Frame):
     """Прокручиваемая таблица с визуализацией по всем строкам результата."""
 
@@ -1183,6 +1203,9 @@ class AnimatedPanel(tk.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._sf = None
+        self._selected_value = None   # str | None; None — ячейка не выбрана
+        self._cell_info_lbl = None
+        self._top_bound = False
 
     def render(self, rows: list, columns: list, viz_configs: dict,
                age_data: dict = None, delta_data: dict = None):
@@ -1193,6 +1216,8 @@ class AnimatedPanel(tk.Frame):
             except Exception:
                 pass
             self._sf = None
+        self._selected_value = None
+        self._cell_info_lbl = None
 
         bg = _viz_bg()
         self.configure(bg=bg)
@@ -1497,6 +1522,7 @@ class AnimatedPanel(tk.Frame):
                     w = _make_compact_cell(sf, vtype, color, raw, cfg)
 
                 w.grid(row=ri + 2, column=ci + 2, sticky="ew", padx=(6, 2), pady=1)
+                _bind_cell_select(w, "" if raw is None else str(raw), self)
 
             def _do_copy(r=row):
                 text = "\n".join("" if v is None else str(v) for v in r)
@@ -1519,3 +1545,45 @@ class AnimatedPanel(tk.Frame):
                          text_color=("gray50", "gray55")
                          ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols + 3,
                                 sticky="w", padx=6, pady=(2, 4))
+
+        # ── строка выделения ячейки (BUG-66) ──────────────────────────────────
+        info_f = ctk.CTkFrame(sf, fg_color=("gray83", "gray22"), corner_radius=4)
+        info_f.grid(row=999, column=0, columnspan=ncols + 3,
+                    sticky="ew", padx=4, pady=(2, 4))
+        info_f.grid_columnconfigure(0, weight=1)
+        self._cell_info_lbl = ctk.CTkLabel(
+            info_f, text="Нажмите на ячейку — Ctrl+C скопирует значение",
+            anchor="w", font=ctk.CTkFont(size=9),
+            text_color=("gray50", "gray55"),
+        )
+        self._cell_info_lbl.grid(row=0, column=0, sticky="ew", padx=(6, 2), pady=2)
+        ctk.CTkButton(
+            info_f, text="⎘", width=26, height=20,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            hover_color=("gray75", "gray35"),
+            command=self._copy_selected_cell,
+        ).grid(row=0, column=1, padx=(0, 4), pady=2)
+        if not self._top_bound:
+            try:
+                top = self.winfo_toplevel()
+                top.bind("<Control-c>", self._copy_selected_cell, add="+")
+                top.bind("<Control-C>", self._copy_selected_cell, add="+")
+                self._top_bound = True
+            except Exception:
+                pass
+
+    def _copy_selected_cell(self, event=None):
+        try:
+            if not self.winfo_ismapped():
+                return
+        except Exception:
+            return
+        if self._selected_value is not None:
+            try:
+                top = self.winfo_toplevel()
+                top.clipboard_clear()
+                top.clipboard_append(self._selected_value)
+            except Exception:
+                pass
+            return "break"
