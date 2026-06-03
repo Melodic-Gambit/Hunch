@@ -1173,10 +1173,8 @@ def _cancel_widget_timers(widget):
 
 
 def _bind_cell_select(widget, value: str, panel: "AnimatedPanel") -> None:
-    """Рекурсивно привязывает <ButtonPress-1> к виджету и его потомкам.
-    При клике сохраняет значение ячейки в panel._selected_value (BUG-66)."""
-    def _on_click(event=None, v=value, p=panel):
-        p._selected_value = v
+    """Рекурсивно привязывает клики и Ctrl+C к виджету и его потомкам."""
+    def _update_info(v, p):
         if p._cell_info_lbl is not None:
             try:
                 display = v[:60] + ("…" if len(v) > 60 else "")
@@ -1184,7 +1182,49 @@ def _bind_cell_select(widget, value: str, panel: "AnimatedPanel") -> None:
                     text=("> " + display) if display else "> (пусто)")
             except Exception:
                 pass
+
+    def _on_click(event=None, v=value, p=panel):
+        p._selected_value = v
+        _update_info(v, p)
+        try:
+            p.winfo_toplevel()._last_anim_panel = p
+        except Exception:
+            pass
+
+    def _copy_cell(event=None, v=value, p=panel):
+        p._selected_value = v
+        try:
+            top = p.winfo_toplevel()
+            top.clipboard_clear()
+            top.clipboard_append(v)
+        except Exception:
+            pass
+        return "break"
+
+    def _show_ctx_menu(event=None, v=value, p=panel, w=widget):
+        if event is None:
+            return
+        p._selected_value = v
+        _update_info(v, p)
+        menu = tk.Menu(w, tearoff=0)
+        menu.add_command(label="Копировать", command=lambda: _copy_cell(v=v, p=p))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
     widget.bind("<ButtonPress-1>", _on_click, add="+")
+    widget.bind("<Button-3>", _show_ctx_menu, add="+")
+    # Прямые Ctrl-биндинги на ячейку: резервный путь если Toplevel-событие
+    # поглощено Canvas-виджетом (нестандартные типы анимации, BUG-69)
+    for seq in ("<Control-c>", "<Control-C>", "<Control-ы>", "<Control-Ы>"):
+        widget.bind(seq, _copy_cell, add="+")
+    # Canvas не должен захватывать фокус при клике — иначе глотает Ctrl+C
+    if isinstance(widget, tk.Canvas):
+        try:
+            widget.configure(takefocus=0)
+        except Exception:
+            pass
     try:
         for child in widget.winfo_children():
             _bind_cell_select(child, value, panel)
@@ -1206,6 +1246,8 @@ class AnimatedPanel(tk.Frame):
         self._selected_value = None   # str | None; None — ячейка не выбрана
         self._cell_info_lbl = None
         self._top_bound = False
+        self._bound_toplevel = None   # toplevel, на который добавлены биндинги (BUG-70)
+        self._bind_funcids = {}       # seq → funcid для точечного unbind (BUG-71)
 
     def render(self, rows: list, columns: list, viz_configs: dict,
                age_data: dict = None, delta_data: dict = None):
@@ -1546,7 +1588,7 @@ class AnimatedPanel(tk.Frame):
                          ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols + 3,
                                 sticky="w", padx=6, pady=(2, 4))
 
-        # ── строка выделения ячейки (BUG-66) ──────────────────────────────────
+        # ── строка выделения ячейки (BUG-69) ──────────────────────────────────
         info_f = ctk.CTkFrame(sf, fg_color=("gray83", "gray22"), corner_radius=4)
         info_f.grid(row=999, column=0, columnspan=ncols + 3,
                     sticky="ew", padx=4, pady=(2, 4))
@@ -1564,18 +1606,35 @@ class AnimatedPanel(tk.Frame):
             hover_color=("gray75", "gray35"),
             command=self._copy_selected_cell,
         ).grid(row=0, column=1, padx=(0, 4), pady=2)
-        if not self._top_bound:
+        try:
+            _cur_top = self.winfo_toplevel()
+            if _cur_top is not self._bound_toplevel:
+                if self._bound_toplevel is not None and self._bind_funcids:
+                    try:
+                        for _seq, _fid in self._bind_funcids.items():
+                            self._bound_toplevel.unbind(_seq, _fid)
+                    except Exception:
+                        pass
+                self._bind_funcids = {}
+                self._top_bound = False
+        except Exception:
+            _cur_top = None
+        if not self._top_bound and _cur_top is not None:
             try:
-                top = self.winfo_toplevel()
-                top.bind("<Control-c>", self._copy_selected_cell, add="+")
-                top.bind("<Control-C>", self._copy_selected_cell, add="+")
+                for _seq in ("<Control-c>", "<Control-C>",
+                             "<Control-ы>", "<Control-Ы>"):
+                    _fid = _cur_top.bind(_seq, self._copy_selected_cell, add="+")
+                    self._bind_funcids[_seq] = _fid
                 self._top_bound = True
+                self._bound_toplevel = _cur_top
             except Exception:
                 pass
 
     def _copy_selected_cell(self, event=None):
         try:
             if not self.winfo_ismapped():
+                return
+            if self.winfo_toplevel().__dict__.get("_last_anim_panel") is not self:
                 return
         except Exception:
             return

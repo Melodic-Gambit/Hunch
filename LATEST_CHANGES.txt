@@ -1,4 +1,3 @@
-﻿Версия v6.0.1
+﻿Версия v6.0.2
 
-* fix task/#29/V.6.0.0
-* task/#29/V.6.0.0 UX-27 — _open_add_reminder_dialog теперь обрабатывает <Escape> и <Return> (добавлено в mixin)
+* task/#29/V.6.0.1 BUG-63 выполнена: conn.autocommit = True добавлен в ветку Oracle для обоих драйверов

@@ -1109,6 +1109,7 @@ class QueriesTabMixin:
                         self._get_conn_meta(f).get("update_interval", 0) > 0:
                     self._conn_last_refresh[f] = now
         self._schedule_all_timers()
+        self._test_all_connections_async()
         self._gf_schedule_start()
         self._start_reminder_check()
 
@@ -1321,6 +1322,7 @@ class QueriesTabMixin:
         self._schedule_conn_refresh(conn_file, interval_min)
         self.log_manager.add_log(
             f"Последнее время обновления: {now.strftime('%H:%M:%S')}")
+        self._test_conn_file_async(conn_file)
 
     def _refresh_panels_for_db(self, db_display: str):
         """Обновляет панели дашборда, чьи запросы привязаны к данному подключению."""
