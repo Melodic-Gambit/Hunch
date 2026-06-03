@@ -546,6 +546,35 @@ class ConnectionsTabMixin:
         except Exception:
             pass
 
+    def _test_conn_file_async(self, conn_file: str) -> bool:
+        """Запускает фоновый тест одного подключения. Возвращает False если уже тестируется."""
+        if conn_file in self._conn_status_testing:
+            return False
+        try:
+            cfg_path = os.path.join(self.data_manager.config_dir, conn_file)
+            with open(cfg_path, encoding="utf-8") as fh:
+                config = json.load(fh)
+        except Exception:
+            return False
+        if config.get("password_in_keyring"):
+            display_name = self.data_manager.get_db_display_name(conn_file)
+            config["password"] = self.db_manager.get_keyring_password(display_name)
+        self._conn_status_testing.add(conn_file)
+        threading.Thread(
+            target=self._bg_test_conn,
+            args=(conn_file, config), daemon=True
+        ).start()
+        return True
+
+    def _test_all_connections_async(self):
+        """Запускает фоновую проверку всех подключений для обновления индикаторов."""
+        cfg_dir = self.data_manager.config_dir
+        if not os.path.exists(cfg_dir):
+            return
+        for f in os.listdir(cfg_dir):
+            if f.endswith(".json"):
+                self._test_conn_file_async(f)
+
     def _sorted_conn_files(self, files: list) -> list:
         col, rev = self._conn_sort
         if col is None:
@@ -603,21 +632,9 @@ class ConnectionsTabMixin:
         filename = self._find_conn_file(display_name)
         if not filename:
             return
-        try:
-            with open(os.path.join(self.data_manager.config_dir, filename), encoding="utf-8") as fh:
-                config = json.load(fh)
-        except Exception:
-            return
-        if config.get("password_in_keyring"):
-            config["password"] = self.db_manager.get_keyring_password(display_name)
         self._conn_statuses[filename] = None
-        self._conn_status_testing.add(filename)
         self.refresh_connections_list()
-        threading.Thread(
-            target=self._bg_test_conn,
-            args=(filename, config), daemon=True
-        ).start()
-
+        self._test_conn_file_async(filename)
 
     def _on_conn_search_changed(self):
         term = self._conn_search_var.get()

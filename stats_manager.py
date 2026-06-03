@@ -50,7 +50,8 @@ class StatsManager:
 
     def _init_db(self):
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS query_stats (
                         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,16 +65,21 @@ class StatsManager:
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_qf ON query_stats(query_file)")
                 conn.commit()
+            finally:
+                conn.close()
 
     def rotate(self, max_age_days: int = 90) -> int:
         """Удаляет записи старше max_age_days дней. Возвращает число удалённых строк."""
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=max_age_days)).strftime(
             "%Y-%m-%d %H:%M:%S")
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 cur = conn.execute("DELETE FROM query_stats WHERE ts < ?", (cutoff,))
                 conn.commit()
                 return cur.rowcount
+            finally:
+                conn.close()
 
     def rotate_by_size(self, max_size_mb: float = 10.0) -> int:
         """Удаляет старейшие записи, пока файл не уменьшится ниже max_size_mb МБ.
@@ -81,7 +87,8 @@ class StatsManager:
         if self.get_db_size_kb() * 1024 <= max_size_mb * 1024 * 1024:
             return 0
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 total = conn.execute("SELECT COUNT(*) FROM query_stats").fetchone()[0]
                 if total == 0:
                     return 0
@@ -94,6 +101,8 @@ class StatsManager:
                 """, (keep,))
                 conn.commit()
                 return removed
+            finally:
+                conn.close()
 
     def record(self, query_file: str, duration_ms: float,
                row_count: int = 0, is_error: bool = False):
@@ -109,7 +118,8 @@ class StatsManager:
     def get_summary(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Возвращает агрегированную статистику по каждому запросу."""
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 rows = conn.execute("""
                     SELECT
                         query_file,
@@ -125,12 +135,15 @@ class StatsManager:
                     ORDER BY avg_ms DESC
                     LIMIT ?
                 """, (limit,)).fetchall()
-        return [dict(r) for r in rows]
+                return [dict(r) for r in rows]
+            finally:
+                conn.close()
 
     def get_recent(self, query_file: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Последние N запусков для конкретного файла."""
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 rows = conn.execute("""
                     SELECT ts, duration_ms, row_count, is_error
                     FROM query_stats
@@ -138,13 +151,18 @@ class StatsManager:
                     ORDER BY id DESC
                     LIMIT ?
                 """, (query_file, limit)).fetchall()
-        return [dict(r) for r in rows]
+                return [dict(r) for r in rows]
+            finally:
+                conn.close()
 
     def clear(self):
         with self._lock:
-            with self._connect() as conn:
+            conn = self._connect()
+            try:
                 conn.execute("DELETE FROM query_stats")
                 conn.commit()
+            finally:
+                conn.close()
 
     def get_db_size_kb(self) -> float:
         try:

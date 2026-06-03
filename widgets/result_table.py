@@ -644,7 +644,7 @@ class ResultTable(ctk.CTkFrame):
         ws = wb.active
         ws.title = "Результаты"
         ws.append(list(self._columns))
-        header_fill = PatternFill("solid", fgColor="0D9488")
+        header_fill = PatternFill("solid", fgColor=theme_colors.accent().lstrip("#"))
         for cell in ws[1]:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = header_fill
