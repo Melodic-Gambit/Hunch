@@ -105,13 +105,21 @@ class SettingsTabMixin:
                       hover_color=("gray65", "gray25"),
                       ).pack(side="left", padx=(8, 0))
 
+        rf_ffs = _row(4, "Размер текста фреймов (8–14)")
+        saved_ffs = self.settings_manager.get_setting("dashboard", {}).get("frame_font_size", 10)
+        self.frame_font_size_entry = ctk.CTkEntry(rf_ffs, placeholder_text="8–14", width=70, height=32)
+        self.frame_font_size_entry.insert(0, str(saved_ffs))
+        self.frame_font_size_entry.pack(side="left", padx=(0, 8))
+        ctk.CTkButton(rf_ffs, text="Применить", command=self._apply_frame_font_size,
+                      width=110, height=32).pack(side="left")
+
         self._refresh_frames_table()
 
         # ── Лимит строк результата ────────────────────────────────────────────
-        _sep(4)
-        _section(5, "Результаты запросов")
+        _sep(5)
+        _section(6, "Результаты запросов")
 
-        rf10 = _row(6, "Лимит строк (0 = без лимита)")
+        rf10 = _row(7, "Лимит строк (0 = без лимита)")
         saved_max_rows = self.settings_manager.get_setting("max_rows", 1000)
         self.max_rows_entry = ctk.CTkEntry(rf10, placeholder_text="строк", width=70, height=32)
         self.max_rows_entry.insert(0, str(saved_max_rows))
@@ -119,7 +127,7 @@ class SettingsTabMixin:
         ctk.CTkButton(rf10, text="Применить", command=self._apply_max_rows,
                       width=110, height=32).pack(side="left")
 
-        rf_timeout = _row(7, "Таймаут SQL-запроса (сек., 0 = без лимита)")
+        rf_timeout = _row(8, "Таймаут SQL-запроса (сек., 0 = без лимита)")
         saved_timeout = self.settings_manager.get_setting("query_timeout_secs", 300)
         self.query_timeout_entry = ctk.CTkEntry(rf_timeout, placeholder_text="сек.", width=70, height=32)
         self.query_timeout_entry.insert(0, str(saved_timeout))
@@ -128,10 +136,10 @@ class SettingsTabMixin:
                       width=110, height=32).pack(side="left")
 
         # ── Ротация логов ─────────────────────────────────────────────────────
-        _sep(8)
-        _section(9, "Ротация логов")
+        _sep(9)
+        _section(10, "Ротация логов")
 
-        rf13 = _row(10, "Хранить логи (часов)")
+        rf13 = _row(11, "Хранить логи (часов)")
         saved_hours = self.settings_manager.get_setting("log_rotation_hours", 120)
         self.rotation_hours_entry = ctk.CTkEntry(rf13, placeholder_text="часов", width=70, height=32)
         self.rotation_hours_entry.insert(0, str(saved_hours))
@@ -139,7 +147,7 @@ class SettingsTabMixin:
         ctk.CTkButton(rf13, text="Применить", command=self._apply_rotation_hours,
                       width=110, height=32).pack(side="left")
 
-        rf_log_size = _row(11, "Лимит размера логов (МБ, 0 = без лимита)")
+        rf_log_size = _row(12, "Лимит размера логов (МБ, 0 = без лимита)")
         saved_log_mb = self.settings_manager.get_setting("log_rotation_max_mb", 100)
         self.log_size_entry = ctk.CTkEntry(rf_log_size, placeholder_text="МБ", width=70, height=32)
         self.log_size_entry.insert(0, str(saved_log_mb))
@@ -148,10 +156,10 @@ class SettingsTabMixin:
                       width=110, height=32).pack(side="left")
 
         # ── Настройка уведомлений ─────────────────────────────────────────────
-        _sep(12)
-        _section(13, "Настройка уведомлений")
+        _sep(13)
+        _section(14, "Настройка уведомлений")
 
-        rf16 = _row(14, "Ротация уведомлений (мин., 0 = выключено)")
+        rf16 = _row(15, "Ротация уведомлений (мин., 0 = выключено)")
         saved_notif_rot = self.settings_manager.get_setting("notif_rotation_minutes", 0)
         self.notif_rotation_entry = ctk.CTkEntry(rf16, placeholder_text="мин.", width=70, height=32)
         self.notif_rotation_entry.insert(0, str(saved_notif_rot))
@@ -159,7 +167,7 @@ class SettingsTabMixin:
         ctk.CTkButton(rf16, text="Применить", command=self._apply_notif_rotation,
                       width=110, height=32).pack(side="left")
 
-        rf_debounce = _row(15, "Дебаунс алертов (сек.)")
+        rf_debounce = _row(16, "Дебаунс алертов (сек.)")
         saved_deb = self.settings_manager.get_setting("alert_debounce_secs", 10)
         self.alert_debounce_entry = ctk.CTkEntry(rf_debounce, placeholder_text="сек.", width=70, height=32)
         self.alert_debounce_entry.insert(0, str(saved_deb))
@@ -167,7 +175,7 @@ class SettingsTabMixin:
         ctk.CTkButton(rf_debounce, text="Применить", command=self._apply_alert_debounce,
                       width=110, height=32).pack(side="left")
 
-        rf_vol = _row(16, "Громкость уведомлений")
+        rf_vol = _row(17, "Громкость уведомлений")
         saved_vol = self.settings_manager.get_setting("notification_volume", 100)
         self._vol_value_label = ctk.CTkLabel(rf_vol, text=f"{saved_vol}%", width=42, anchor="w")
         self.notif_volume_slider = ctk.CTkSlider(
@@ -189,25 +197,25 @@ class SettingsTabMixin:
 
         ctk.CTkLabel(content, text="Список уведомлений:", anchor="w",
                      font=ctk.CTkFont(weight="bold")).grid(
-            row=17, column=0, pady=(10, 4), sticky="w")
+            row=18, column=0, pady=(10, 4), sticky="w")
 
         self._notif_query_list_container = ctk.CTkFrame(content, fg_color="transparent")
         self._notif_query_list_container.grid(
-            row=18, column=0, sticky="ew", pady=(0, 6))
+            row=19, column=0, sticky="ew", pady=(0, 6))
 
         self._refresh_notif_query_checkboxes()
 
         # ── Управление виджетами ──────────────────────────────────────────────
-        _sep(19)
-        _section(20, "Управление виджетами")
+        _sep(20)
+        _section(21, "Управление виджетами")
 
         self._widgets_table_container = ctk.CTkFrame(content, fg_color="transparent")
-        self._widgets_table_container.grid(row=21, column=0, sticky="ew", pady=(0, 6))
+        self._widgets_table_container.grid(row=22, column=0, sticky="ew", pady=(0, 6))
         self._refresh_widgets_table()
 
         # ── Цветовая тема ─────────────────────────────────────────────────────
-        _sep(22)
-        _section(23, "Цветовая тема")
+        _sep(23)
+        _section(24, "Цветовая тема")
 
         _THEME_PRESETS = {
             "Бирюзовый (по умолчанию)": {"accent": "#0D9488", "hover": "#0B7A72", "dark": "#096B62"},
@@ -225,7 +233,7 @@ class SettingsTabMixin:
         _preset_name_by_color = {v["accent"]: k for k, v in _THEME_PRESETS.items()}
         cur_preset = _preset_name_by_color.get(saved_accent, "Бирюзовый (по умолчанию)")
 
-        rf_preset = _row(24, "Готовая схема")
+        rf_preset = _row(25, "Готовая схема")
         self._theme_preset_var = ctk.StringVar(value=cur_preset)
         preset_combo = ctk.CTkComboBox(
             rf_preset,
@@ -252,7 +260,7 @@ class SettingsTabMixin:
 
         preset_combo.configure(command=_on_preset_change)
 
-        rf_custom = _row(25, "Произвольный цвет (HEX)")
+        rf_custom = _row(26, "Произвольный цвет (HEX)")
         self._theme_accent_var = ctk.StringVar(value=saved_accent)
         accent_entry = ctk.CTkEntry(rf_custom, textvariable=self._theme_accent_var,
                                     placeholder_text="#0D9488", width=100, height=32)
@@ -293,7 +301,7 @@ class SettingsTabMixin:
             self._theme_preview_lbl.configure(fg_color=accent)
             self._apply_theme_live(accent, hover, dark)
 
-        rf_apply_theme = _row(26, "")
+        rf_apply_theme = _row(27, "")
         ctk.CTkButton(rf_apply_theme, text="Применить тему", width=140, height=32,
                       command=_apply_theme).pack(side="left", padx=(0, 16))
         ctk.CTkButton(rf_apply_theme, text="Экспорт темы…", width=130, height=32,
@@ -312,22 +320,22 @@ class SettingsTabMixin:
                       command=self._import_theme).pack(side="left")
 
         # ── Импорт / Экспорт конфигурации ────────────────────────────────────
-        _sep(27)
-        _section(28, "Импорт / Экспорт конфигурации")
+        _sep(28)
+        _section(29, "Импорт / Экспорт конфигурации")
 
-        rf_exp = _row(29, "Экспорт конфигурации в ZIP-архив")
+        rf_exp = _row(30, "Экспорт конфигурации в ZIP-архив")
         ctk.CTkButton(rf_exp, text="Экспортировать…", width=150, height=32,
                       command=self._export_config).pack(side="left")
 
-        rf_imp = _row(30, "Импорт конфигурации из ZIP-архива")
+        rf_imp = _row(31, "Импорт конфигурации из ZIP-архива")
         ctk.CTkButton(rf_imp, text="Импортировать…", width=150, height=32,
                       command=self._import_config).pack(side="left")
 
         # ── Обновления ────────────────────────────────────────────────────────
-        _sep(31)
-        _section(32, "Обновления")
+        _sep(32)
+        _section(33, "Обновления")
 
-        rf_upd = _row(33, "Проверять обновления при запуске")
+        rf_upd = _row(34, "Проверять обновления при запуске")
         _upd_on = self.settings_manager.get_setting("check_updates", True)
         self._update_check_switch = ctk.CTkSwitch(rf_upd, text="", width=46, height=24)
         if _upd_on:
@@ -351,6 +359,22 @@ class SettingsTabMixin:
         self._rebuild_dashboard(count)   # template сохраняется из _current_template
         self._refresh_frames_table()
         self.log_manager.add_log(f"Количество фреймов изменено: {count}")
+
+    def _apply_frame_font_size(self):
+        val = self.frame_font_size_entry.get().strip()
+        try:
+            size = int(val)
+            if not (8 <= size <= 14):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Ошибка", "Введите целое число от 8 до 14")
+            return
+        self._dashboard_frame_font_size = size
+        self._save_dashboard_state()
+        for p in getattr(self, "dash_panels", []):
+            if p.get_query_name():
+                p.rerender_font()
+        self.log_manager.add_log(f"Размер текста фреймов изменён: {size}pt")
 
     def _open_layout_dialog(self):
         """Открывает диалог выбора шаблона компоновки (UX-10c)."""

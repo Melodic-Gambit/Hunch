@@ -1122,7 +1122,8 @@ class DeltaWidget(tk.Frame):
                       fill=color, font=("Segoe UI", 12, "bold"))
 
 
-def _make_compact_cell(parent, vtype: str, color: str, value, cfg: dict):
+def _make_compact_cell(parent, vtype: str, color: str, value, cfg: dict,
+                       font_size: int = 10):
     """Компактный виджет для одной ячейки строки в AnimatedPanel."""
     if color == "auto":
         color = "#d0d0d0" if ctk.get_appearance_mode() == "Dark" else "#2a2a2a"
@@ -1130,7 +1131,7 @@ def _make_compact_cell(parent, vtype: str, color: str, value, cfg: dict):
 
     if vtype == "Счётчик":
         return ctk.CTkLabel(parent, text=val_str, anchor="w",
-                            text_color=color, font=ctk.CTkFont(size=11, weight="bold"))
+                            text_color=color, font=ctk.CTkFont(size=font_size, weight="bold"))
 
     elif vtype == "Прогресс-бар":
         min_v, max_v = cfg.get("min", 0), cfg.get("max", 100)
@@ -1142,19 +1143,19 @@ def _make_compact_cell(parent, vtype: str, color: str, value, cfg: dict):
         filled = int(frac * 8)
         bar    = "█" * filled + "░" * (8 - filled)
         return ctk.CTkLabel(parent, text=f"{bar}  {val_str}", anchor="w",
-                            text_color=color, font=ctk.CTkFont(family="Consolas", size=10))
+                            text_color=color, font=ctk.CTkFont(family="Consolas", size=font_size))
 
     elif vtype in ("Спидометр", "Пульс"):
         return ctk.CTkLabel(parent, text=val_str, anchor="w",
-                            text_color=color, font=ctk.CTkFont(size=11, weight="bold"))
+                            text_color=color, font=ctk.CTkFont(size=font_size, weight="bold"))
 
     elif vtype == "Индикатор 2 (Тепловой)":
         return ctk.CTkLabel(parent, text=val_str, anchor="w",
-                            font=ctk.CTkFont(size=10))
+                            font=ctk.CTkFont(size=font_size))
 
     else:
         return ctk.CTkLabel(parent, text=val_str, anchor="w",
-                            font=ctk.CTkFont(size=10))
+                            font=ctk.CTkFont(size=font_size))
 
 
 def _cancel_widget_timers(widget):
@@ -1250,7 +1251,7 @@ class AnimatedPanel(tk.Frame):
         self._bind_funcids = {}       # seq → funcid для точечного unbind (BUG-71)
 
     def render(self, rows: list, columns: list, viz_configs: dict,
-               age_data: dict = None, delta_data: dict = None):
+               age_data: dict = None, delta_data: dict = None, font_size: int = 10):
         if self._sf is not None:
             _cancel_widget_timers(self._sf)
             try:
@@ -1561,7 +1562,7 @@ class AnimatedPanel(tk.Frame):
                     w.set_value_and_delta(raw, delta_val)
 
                 else:
-                    w = _make_compact_cell(sf, vtype, color, raw, cfg)
+                    w = _make_compact_cell(sf, vtype, color, raw, cfg, font_size)
 
                 w.grid(row=ri + 2, column=ci + 2, sticky="ew", padx=(6, 2), pady=1)
                 _bind_cell_select(w, "" if raw is None else str(raw), self)
