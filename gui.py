@@ -1441,10 +1441,8 @@ class DashboardPanel(ctk.CTkFrame):
                 self._elapsed_id = None
             self._cancel_btn.grid_remove()
             self._cancel_fn = None
-            self.title_lbl.configure(
-                text=self._base_title(),
-                text_color=self._title_default_color,
-            )
+            self.title_lbl.configure(text=self._base_title())
+            self._apply_panel_viz_config()
 
     def _do_spin(self):
         if not self._loading:
