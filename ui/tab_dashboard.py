@@ -786,6 +786,12 @@ class DashboardTabMixin:
         # Повторное применение после 400 мс: перекрывает Configure-события от зума окна
         self.after(400, lambda s=sashes: self._set_all_sash_positions(s))
         self._rebuild_pinned_snapshot()
+        self.after(600, self._autorun_panel_queries_on_startup)
+
+    def _autorun_panel_queries_on_startup(self):
+        for p in self.dash_panels:
+            if p.get_query_name():
+                self._run_panel_query(p)
 
     def _rebuild_dashboard(self, count: int, template: str = None):
         states = [p.get_state() for p in self.dash_panels]
