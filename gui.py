@@ -1282,6 +1282,8 @@ class DashboardPanel(ctk.CTkFrame):
         self._display1_age:     dict = {}   # {(col_name, val_str): first_seen datetime}
         self._delta_prev:       dict = {}   # {(col_name, row_idx): prev_value}
         self._last_columns:     list = []   # колонки до фильтрации visible_columns
+        self._anim_rows:        list = []   # кеш строк последнего _render_animated
+        self._anim_cols:        list = []   # кеш колонок последнего _render_animated (после фильтрации)
         self._panel_viz_config: dict = {}   # {header_color, marker_shape, marker_color}
         self._active_signals:   set  = set()  # {(col_name, sig_text)} активных сигналов
         self.on_signal_fired         = None   # callback(col_name, sig_text)
@@ -1591,13 +1593,29 @@ class DashboardPanel(ctk.CTkFrame):
             self.result_table.set_data(rows, columns)
 
     def _render_animated(self, rows: list, columns: list, delta_data: dict = None):
+        self._anim_rows = rows
+        self._anim_cols = columns
         self.result_table.grid_remove()
         self.result_table.set_data(rows, columns, reset_hidden=False)
         if self._anim_panel is None or not self._anim_panel.winfo_exists():
             self._anim_panel = AnimatedPanel(self)
             self._anim_panel.grid(row=1, column=0, sticky="nsew")
+        try:
+            font_size = self.winfo_toplevel()._dashboard_frame_font_size
+            if not isinstance(font_size, int) or not (8 <= font_size <= 14):
+                font_size = 10
+        except Exception:
+            font_size = 10
         self._anim_panel.render(rows, columns, self._viz_configs,
-                                self._display1_age, delta_data or {})
+                                self._display1_age, delta_data or {}, font_size=font_size)
+
+    def rerender_font(self) -> None:
+        """Перерендер AnimatedPanel с новым font_size без обращения к БД."""
+        if not (self._viz_mode and self._viz_configs):
+            return
+        if not self._anim_cols:
+            return
+        self._render_animated(self._anim_rows, self._anim_cols)
 
     _AGE_ANIM_TYPES = {"Индикатор 1", "Индикатор 2", "Индикатор - круги",
                        "Индикатор 2 (Тепловой)", "Светофор",
@@ -2232,6 +2250,11 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
         self._query_history:        dict = {}   # {filename: [{"ts":..,"rows":..,"columns":..}]}
         self._conn_statuses: dict = {}          # {filename: True/False/None}
         self._conn_status_testing: set = set()  # файлы, тестируемые прямо сейчас
+        _cached_statuses = self.settings_manager.get_setting("conn_status_cache", {})
+        if isinstance(_cached_statuses, dict):
+            self._conn_statuses.update(
+                {k: v for k, v in _cached_statuses.items() if isinstance(v, bool)}
+            )
 
         self._notifications:          list = []   # [{id, query_name, timestamp, read}]
         self._notification_counter:   int  = 0
@@ -2700,6 +2723,18 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
         # При закрытии через × сворачиваемся в трей (если pystray доступен)
         if not getattr(self, "_quitting", False):
             if self._ensure_tray_icon():
+                try:
+                    if hasattr(self, "dash_panels"):
+                        self._save_dashboard_state()
+                except Exception:
+                    pass
+                try:
+                    statuses_to_save = {k: v for k, v in self._conn_statuses.items()
+                                        if v is not None}
+                    self.settings_manager.set_setting("conn_status_cache", statuses_to_save)
+                    self.settings_manager.flush()
+                except Exception:
+                    pass
                 self.withdraw()
                 return
 
@@ -2736,6 +2771,12 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
         try:
             if hasattr(self, "dash_panels"):
                 self._save_dashboard_state()
+        except Exception:
+            pass
+        try:
+            statuses_to_save = {k: v for k, v in self._conn_statuses.items()
+                                if v is not None}
+            self.settings_manager.set_setting("conn_status_cache", statuses_to_save)
         except Exception:
             pass
         try:

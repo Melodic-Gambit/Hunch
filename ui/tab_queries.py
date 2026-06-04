@@ -1207,6 +1207,8 @@ class QueriesTabMixin:
             db_display = meta.get("database", "")
             conn_file = self._find_conn_file(db_display) if db_display else None
             if not conn_file:
+                self.log_manager.add_log(
+                    f"Авто-запрос {query_file}: подключение '{db_display}' не найдено", "WARNING")
                 return
             with open(os.path.join(self.data_manager.queries_dir, query_file), encoding="utf-8") as fh:
                 sql = fh.read()
@@ -1232,18 +1234,18 @@ class QueriesTabMixin:
                 try:
                     self.after(0, lambda r=rows, c=cols, ms=_ms: done(r, c, None, ms))
                 except Exception:
-                    pass
+                    self._queries_in_progress.discard(query_file)
             except Exception as e:
                 _ms = (time.monotonic() - _t0) * 1000
                 try:
                     self.after(0, lambda err=e, ms=_ms: done([], [], err, ms))
                 except Exception:
-                    pass
+                    self._queries_in_progress.discard(query_file)
 
         def done(rows, cols, err, duration_ms: float = 0.0):
+            self._queries_in_progress.discard(query_file)
             if not self.winfo_exists():
                 return
-            self._queries_in_progress.discard(query_file)
             for panel in getattr(self, "dash_panels", []):
                 qf = self._find_query_file(panel.get_query_name() or "")
                 if qf == query_file:

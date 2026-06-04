@@ -1,3 +1,3 @@
-﻿Версия v6.0.2
+﻿Версия v6.1.0
 
-* task/#29/V.6.0.1 BUG-63 выполнена: conn.autocommit = True добавлен в ветку Oracle для обоих драйверов
+* task/#30/V.6.0.2 BUG-69 _bind_cell_select (~строка 1175): Добавлена _copy_cell — прямое копирование в буфер (резервный путь если Toplevel-событие поглощено Canvas) Добавлена _show_ctx_menu — ПКМ-меню с пунктом «Копировать» (с guard if event is None: return от code-reviewer) <Button-3> биндинг — вызов контекстного меню по правой кнопке мыши Прямые Ctrl-биндинги на каждую ячейку: <Control-c>, <Control-C>, <Control-ы>, <Control-Ы> takefocus=0 на tk.Canvas — Canvas больше не захватывает фокус при клике AnimatedPanel.render (~строка 1601): _top_bound блок расширен: биндинги на toplevel теперь включают <Control-ы> и <Control-Ы>

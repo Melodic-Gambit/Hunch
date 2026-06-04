@@ -515,6 +515,8 @@ class DashboardTabMixin:
         saved = self.settings_manager.get_setting("dashboard", {})
         count = saved.get("panel_count", 3)
         self._dashboard_panel_count = max(1, min(6, count))
+        _ffs = saved.get("frame_font_size", 10)
+        self._dashboard_frame_font_size = _ffs if isinstance(_ffs, int) and 8 <= _ffs <= 14 else 10
         self._build_dashboard_panes(self._dashboard_panel_count)
         self.after(200, lambda: self._restore_dashboard_state(saved))
 
@@ -544,7 +546,8 @@ class DashboardTabMixin:
             panel.set_queries(query_names)
             panel.run_btn.configure(command=lambda p=panel: self._run_panel_query(p))
             panel.query_combo.configure(
-                command=lambda v, p=panel: self._run_panel_query(p))
+                command=lambda v, p=panel: (self._run_panel_query(p),
+                                            self._save_dashboard_state()))
             panel.on_signal_fired = (
                 lambda cn, st, p=panel: self._on_panel_signal_fired(p, cn, st))
             panel.on_history_click = (
@@ -764,10 +767,11 @@ class DashboardTabMixin:
         states = [p.get_state() for p in self.dash_panels]
         sashes = self._get_all_sash_positions()
         self.settings_manager.set_setting("dashboard", {
-            "panel_count": self._dashboard_panel_count,
-            "template":    getattr(self, "_current_template", "auto"),
-            "panels":      states,
-            "sashes":      sashes,
+            "panel_count":     self._dashboard_panel_count,
+            "template":        getattr(self, "_current_template", "auto"),
+            "panels":          states,
+            "sashes":          sashes,
+            "frame_font_size": getattr(self, "_dashboard_frame_font_size", 10),
         })
 
     def _restore_dashboard_state(self, saved: dict):
