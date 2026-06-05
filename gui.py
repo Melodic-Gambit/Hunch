@@ -1588,13 +1588,15 @@ class DashboardPanel(ctk.CTkFrame):
             if self._chart_canvas and self._chart_canvas.winfo_exists():
                 self._chart_canvas.grid_remove()
             self.result_table.grid()
-            self.result_table.set_data(rows, columns)
+            evicted = self.result_table.set_data(rows, columns, reset_hidden=False)
+            self._log_evicted_hidden(evicted)
 
     def _render_animated(self, rows: list, columns: list, delta_data: dict = None):
         self._anim_rows = rows
         self._anim_cols = columns
         self.result_table.grid_remove()
-        self.result_table.set_data(rows, columns, reset_hidden=False)
+        evicted = self.result_table.set_data(rows, columns, reset_hidden=False)
+        self._log_evicted_hidden(evicted)
         if self._anim_panel is None or not self._anim_panel.winfo_exists():
             self._anim_panel = AnimatedPanel(self)
             self._anim_panel.grid(row=1, column=0, sticky="nsew")
@@ -1606,6 +1608,17 @@ class DashboardPanel(ctk.CTkFrame):
             font_size = 10
         self._anim_panel.render(rows, columns, self._viz_configs,
                                 self._display1_age, delta_data or {}, font_size=font_size)
+
+    def _log_evicted_hidden(self, evicted: set) -> None:
+        if not evicted:
+            return
+        top = self.winfo_toplevel()
+        if not hasattr(top, "log_manager"):
+            return
+        for key in sorted(evicted):
+            top.log_manager.add_log(
+                f"Скрытая строка {key} исключена из данных SQL-запроса"
+            )
 
     def rerender_font(self) -> None:
         """Перерендер AnimatedPanel с новым font_size без обращения к БД."""

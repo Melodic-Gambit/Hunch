@@ -1173,8 +1173,26 @@ def _cancel_widget_timers(widget):
         pass
 
 
+def _inject_parent_tag(widget, parent_path: str) -> None:
+    """Добавляет путь родительской ячейки в bindtags потомков для propagation кликов."""
+    try:
+        tags = list(widget.bindtags())
+        if parent_path not in tags:
+            tags.append(parent_path)
+            widget.bindtags(tags)
+        if isinstance(widget, tk.Canvas):
+            try:
+                widget.configure(takefocus=0)
+            except Exception:
+                pass
+        for child in widget.winfo_children():
+            _inject_parent_tag(child, parent_path)
+    except Exception:
+        pass
+
+
 def _bind_cell_select(widget, value: str, panel: "AnimatedPanel") -> None:
-    """Рекурсивно привязывает клики и Ctrl+C к виджету и его потомкам."""
+    """Привязывает клики и Ctrl+C к корневому виджету ячейки; потомки делегируют через bindtags."""
     def _update_info(v, p):
         if p._cell_info_lbl is not None:
             try:
@@ -1226,9 +1244,10 @@ def _bind_cell_select(widget, value: str, panel: "AnimatedPanel") -> None:
             widget.configure(takefocus=0)
         except Exception:
             pass
+    # Перенаправить клики с потомков на корневой виджет через bindtags (без рекурсивных bind())
     try:
         for child in widget.winfo_children():
-            _bind_cell_select(child, value, panel)
+            _inject_parent_tag(child, str(widget))
     except Exception:
         pass
 

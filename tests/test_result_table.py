@@ -39,20 +39,27 @@ class _TableLogic:
         self._sort_col = None
         self._sort_rev = False
         self._current_page = 0
+        evicted: set = set()
         if reset_hidden:
             self._hidden_keys = set()
             self._hidden_rows = {}
         if self._hidden_keys:
+            fresh_hidden: dict = {}
             visible = []
             for r in all_rows:
                 key = str(r[0]) if r else ""
                 if key in self._hidden_keys:
-                    self._hidden_rows.setdefault(key, []).append(r)
+                    fresh_hidden.setdefault(key, []).append(r)
                 else:
                     visible.append(r)
+            evicted = self._hidden_keys - set(fresh_hidden.keys())
+            for key in evicted:
+                self._hidden_keys.discard(key)
+            self._hidden_rows = fresh_hidden
             self._rows = visible
         else:
             self._rows = all_rows
+        return evicted
 
     def _total_pages(self):
         if not self._rows:
@@ -159,6 +166,28 @@ class TestSetData:
         t._hide_row("1")
         t.set_data([[1], [2], [3]], ["v"], reset_hidden=False)
         assert "1" not in [str(r[0]) for r in t._rows]
+
+    def test_eviction_removes_stale_hidden_key(self):
+        t = _TableLogic(rows=[[1], [2]], columns=["v"])
+        t._hide_row("1")
+        evicted = t.set_data([[2], [3]], ["v"], reset_hidden=False)
+        assert "1" in evicted
+        assert "1" not in t._hidden_keys
+        assert "1" not in t._hidden_rows
+
+    def test_eviction_returns_empty_when_all_keys_present(self):
+        t = _TableLogic(rows=[[1], [2]], columns=["v"])
+        t._hide_row("1")
+        evicted = t.set_data([[1], [2]], ["v"], reset_hidden=False)
+        assert evicted == set()
+        assert "1" in t._hidden_keys
+
+    def test_no_accumulation_in_hidden_rows(self):
+        t = _TableLogic(rows=[[1], [2]], columns=["v"])
+        t._hide_row("1")
+        t.set_data([[1], [2]], ["v"], reset_hidden=False)
+        t.set_data([[1], [2]], ["v"], reset_hidden=False)
+        assert len(t._hidden_rows.get("1", [])) == 1
 
 
 # ── pagination ─────────────────────────────────────────────────────────────────
