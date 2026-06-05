@@ -1,3 +1,3 @@
-﻿Версия v6.2.0
+﻿Версия v6.2.1
 
-* task/#31/V.6.1.0 BUG-76 (нижние фреймы не сохраняли запрос) — исправлено в двух местах: gui.py on_closing(): перед уходом в трей теперь вызывается _save_dashboard_state() — покрывает все шаблоны (col, row, 1+2, 2+1, 2x2, auto) ui/tab_dashboard.py _wire(): выбор запроса в комбобоксе теперь сразу сохраняет состояние — независимо от того, как будет закрыта программа
+* task/#31/V.6.2.0 BUG-79 ui/tab_dashboard.py:787 — в _restore_dashboard_state() добавлен self.after(600, self._autorun_panel_queries_on_startup) ui/tab_dashboard.py:790 — добавлен метод _autorun_panel_queries_on_startup(), запускающий _run_panel_query(p) для всех панелей с выбранным запросом

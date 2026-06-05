@@ -203,27 +203,34 @@ class ResultTable(ctk.CTkFrame):
 
     # ── данные ───────────────────────────────────────────────────────────────
 
-    def set_data(self, rows: list, columns: list, reset_hidden: bool = True):
+    def set_data(self, rows: list, columns: list, reset_hidden: bool = True) -> set:
         all_rows = [list(r) for r in rows]
         self._columns = list(columns)
         self._sort_col = None
         self._sort_rev = False
         self._current_page = 0
+        evicted: set = set()
         if reset_hidden:
             self._hidden_keys = set()
             self._hidden_rows = {}
         if self._hidden_keys:
+            fresh_hidden: dict = {}
             visible = []
             for r in all_rows:
                 key = str(r[0]) if r else ""
                 if key in self._hidden_keys:
-                    self._hidden_rows.setdefault(key, []).append(r)
+                    fresh_hidden.setdefault(key, []).append(r)
                 else:
                     visible.append(r)
+            evicted = self._hidden_keys - set(fresh_hidden.keys())
+            for key in evicted:
+                self._hidden_keys.discard(key)
+            self._hidden_rows = fresh_hidden
             self._rows = visible
         else:
             self._rows = all_rows
         self._render()
+        return evicted
 
     def _total_pages(self) -> int:
         if not self._rows:
