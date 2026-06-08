@@ -1218,13 +1218,30 @@ class QueriesTabMixin:
             return
 
         db_name = os.path.splitext(conn_file)[0]
+        _timeout = max(0, int(self.settings_manager.get_setting("query_timeout_secs", 300) or 0))
         self._queries_in_progress.add(query_file)
 
         # Показываем спиннер на всех панелях, привязанных к этому файлу
         for panel in getattr(self, "dash_panels", []):
             qf = self._find_query_file(panel.get_query_name() or "")
             if qf == query_file:
-                panel.set_loading(True)
+                panel.set_loading(True, timeout_secs=_timeout)
+
+        # Таймаут-страховка: если воркер завис — done() вызывается принудительно,
+        # _queries_in_progress очищается и панели выходят из вечного спиннера.
+        _done_called = [False]
+        _timeout_id  = [None]
+
+        def _force_timeout():
+            if query_file not in self._queries_in_progress:
+                return
+            try:
+                self.after(0, lambda: done([], [], TimeoutError("Превышен таймаут авто-запроса"), 0))
+            except Exception:
+                self._queries_in_progress.discard(query_file)
+
+        if _timeout > 0:
+            _timeout_id[0] = self.after(_timeout * 1000, _force_timeout)
 
         def worker():
             _t0 = time.monotonic()
@@ -1243,6 +1260,17 @@ class QueriesTabMixin:
                     self._queries_in_progress.discard(query_file)
 
         def done(rows, cols, err, duration_ms: float = 0.0):
+            if _done_called[0]:
+                # Воркер вернулся после таймаута — просто чистим прогресс
+                self._queries_in_progress.discard(query_file)
+                return
+            _done_called[0] = True
+            if _timeout_id[0]:
+                try:
+                    self.after_cancel(_timeout_id[0])
+                except Exception:
+                    pass
+                _timeout_id[0] = None
             self._queries_in_progress.discard(query_file)
             if not self.winfo_exists():
                 return

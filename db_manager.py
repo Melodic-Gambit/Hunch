@@ -107,9 +107,14 @@ class DatabaseManager:
 
         return config
 
+    # Таймаут установки TCP-соединения (секунды). Защищает от зависания при
+    # недоступном хосте — без этого ОС ждёт до ~2 минут (SYN-таймаут).
+    _CONNECT_TIMEOUT: int = 30
+
     def _open_connection(self, config: Dict[str, Any]) -> Any:
         """Открывает соединение по словарю конфигурации (без сохранения)."""
         db_type = config.get("database_type", "sqlite").lower()
+        ct = self._CONNECT_TIMEOUT
 
         if db_type == "sqlite":
             if sqlite3 is None:
@@ -127,6 +132,7 @@ class DatabaseManager:
                 host=config["host"], port=config["port"],
                 database=config["database_name"],
                 user=config["username"], password=config["password"],
+                connect_timeout=ct,
                 options="-c default_transaction_read_only=on")
             conn.autocommit = True  # не держим открытую транзакцию
             return conn
@@ -138,7 +144,9 @@ class DatabaseManager:
                 host=config["host"], port=config["port"],
                 database=config["database_name"],
                 user=config["username"], password=config["password"],
-                charset=config.get("charset", "utf8"))
+                charset=config.get("charset", "utf8"),
+                connect_timeout=ct,
+                read_timeout=ct)
             conn.autocommit(True)
             return conn
 
@@ -163,7 +171,8 @@ class DatabaseManager:
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
                 f"SERVER={config['host']},{config['port']};"
                 f"DATABASE={config['database_name']};"
-                f"UID={config['username']};PWD={config['password']}"
+                f"UID={config['username']};PWD={config['password']};"
+                f"LOGIN_TIMEOUT={ct};"
             )
             conn = pyodbc.connect(cs)
             conn.autocommit = True
