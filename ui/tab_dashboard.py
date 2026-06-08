@@ -781,11 +781,23 @@ class DashboardTabMixin:
             panel.set_queries(query_names)
             if i < len(panels_data):
                 panel.set_state(panels_data[i])
+
+        # Второй проход: гарантируем, что сохранённый запрос выставлен в комбо.
+        # Защищает от ситуации, когда CTkComboBox.cget("values") внутри set_state()
+        # возвращает устаревший кэш до того как configure(values=…) применился.
+        for i, panel in enumerate(self.dash_panels):
+            if i < len(panels_data):
+                saved_q = panels_data[i].get("query", "Выберите запрос")
+                if saved_q != "Выберите запрос" and saved_q in query_names:
+                    if panel.query_combo.get() != saved_q:
+                        panel.query_combo.set(saved_q)
+                        panel.update_title(saved_q)
+
         sashes = saved.get("sashes", {})
         self._set_all_sash_positions(sashes)
-        # Повторное применение после 400 мс: перекрывает Configure-события от зума окна
-        self.after(400, lambda s=sashes: self._set_all_sash_positions(s))
-        self._rebuild_pinned_snapshot()
+        # Retry-механизм: применяет sash каждые 100 мс пока все PanedWindow
+        # не получат реальные размеры. Снимок закреплённых панелей — в конце.
+        self._schedule_sash_restore(sashes)
         self.after(600, self._autorun_panel_queries_on_startup)
 
     def _autorun_panel_queries_on_startup(self):
@@ -874,6 +886,42 @@ class DashboardTabMixin:
                         pw.sash_place(i, 0, int(frac * h))
                 except Exception:
                     pass
+
+    def _schedule_sash_restore(self, sashes: dict, attempts: int = 0):
+        """Применяет sash-позиции, повторяя каждые 100 мс пока все PanedWindow
+        не получат реальные размеры (winfo_width/height > 1). Максимум 15 попыток.
+        После финального применения пересоздаёт снимок закреплённых сашей."""
+        self.update_idletasks()
+        needs_retry = False
+        for key, pw in getattr(self, "_paned_windows", {}).items():
+            if key not in sashes or not sashes[key]:
+                continue
+            fracs = sashes[key]
+            if fracs and isinstance(fracs[0], (list, tuple)):
+                continue
+            try:
+                orient = str(pw.cget("orient"))
+                w = pw.winfo_width()
+                h = pw.winfo_height()
+            except Exception:
+                continue
+            dim = w if orient == "horizontal" else h
+            if dim <= 1:
+                needs_retry = True
+                continue
+            for i, frac in enumerate(fracs):
+                try:
+                    if orient == "horizontal":
+                        pw.sash_place(i, int(frac * w), 0)
+                    elif orient == "vertical":
+                        pw.sash_place(i, 0, int(frac * h))
+                except Exception:
+                    pass
+        if needs_retry and attempts < 15:
+            self.after(100, lambda: self._schedule_sash_restore(sashes, attempts + 1))
+        else:
+            # Все саши применены с реальными размерами — фиксируем снимок
+            self._rebuild_pinned_snapshot()
 
     # ── drag-and-drop панелей ────────────────────────────────────────────────
 

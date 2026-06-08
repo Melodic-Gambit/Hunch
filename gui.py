@@ -1419,7 +1419,21 @@ class DashboardPanel(ctk.CTkFrame):
     def set_loading(self, state: bool, timeout_secs: int = 0):
         self._loading = state
         if state:
-            self._spin_idx    = 0
+            # Отменяем старые таймеры перед новым запуском — иначе дублирующиеся
+            # after()-колбэки удваивают _elapsed_secs и преждевременно триггерят отмену.
+            if self._spin_id:
+                try:
+                    self.after_cancel(self._spin_id)
+                except Exception:
+                    pass
+                self._spin_id = None
+            if self._elapsed_id:
+                try:
+                    self.after_cancel(self._elapsed_id)
+                except Exception:
+                    pass
+                self._elapsed_id = None
+            self._spin_idx     = 0
             self._elapsed_secs = 0
             self._query_timeout = timeout_secs
             self.title_lbl.configure(text_color=theme_colors.accent())
@@ -1458,7 +1472,8 @@ class DashboardPanel(ctk.CTkFrame):
         if not self._loading:
             return
         self._elapsed_secs += 1
-        if self._query_timeout > 0 and self._elapsed_secs >= self._query_timeout:
+        tmo = self._query_timeout or 0
+        if tmo > 0 and self._elapsed_secs >= tmo:
             self._on_cancel()
             return
         self._elapsed_id = self.after(1000, self._do_elapsed)
