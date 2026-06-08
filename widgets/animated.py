@@ -312,7 +312,7 @@ class Display1Widget(tk.Frame):
         self._age         = 0
         self._blink_on    = True
         self._after_id    = None
-        self._canvas      = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        self._canvas      = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         self._canvas.pack(fill="both", expand=True)
         self._canvas.bind("<Configure>", lambda _e: self._draw())
         self._tick()
@@ -390,7 +390,7 @@ class Indicator2Widget(tk.Frame):
         self._age         = 0
         self._blink_on    = True
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -467,7 +467,7 @@ class TrafficWidget(tk.Frame):
         self._blink_on    = True
         self._blink_id    = None
         self._phase_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -546,7 +546,7 @@ class IndicatorCirclesWidget(tk.Frame):
         self._age         = 0
         self._blink_on    = True
         self._after_id    = None
-        self._canvas      = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        self._canvas      = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         self._canvas.pack(fill="both", expand=True)
         self._canvas.bind("<Configure>", lambda _e: self._draw())
         self._tick()
@@ -629,7 +629,7 @@ class HeatTimeWidget(tk.Frame):
         self._first_seen: Optional[datetime.datetime] = None
         self._blink_on    = True
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -731,7 +731,7 @@ class StopwatchWidget(tk.Frame):
         self._text_offset = max(0, int(text_offset))
         self._value_str   = ""
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -800,7 +800,7 @@ class WaveWidget(tk.Frame):
         self._age         = max(0, int(age))
         self._phase       = 0.0
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -872,7 +872,7 @@ class FlameWidget(tk.Frame):
         self._age         = 0
         self._blink_on    = True
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -936,7 +936,7 @@ class EcgWidget(tk.Frame):
         self._phase        = 0.0
         self._hist         = [0.0] * self._HIST
         self._after_id     = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -1020,7 +1020,7 @@ class RingsWidget(tk.Frame):
         self._age         = max(0, int(age))
         self._t           = 0
         self._after_id    = None
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c
@@ -1092,7 +1092,7 @@ class DeltaWidget(tk.Frame):
         self._text_offset = max(0, int(text_offset))
         self._value_str   = ""
         self._delta       = 0
-        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH)
+        c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
         self._canvas = c

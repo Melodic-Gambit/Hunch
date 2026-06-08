@@ -1,3 +1,3 @@
-﻿Версия v6.2.2
+﻿Версия v6.2.3
 
-* task/#33/V.6.2.1 BUG-80 Что изменено: widgets/result_table.py:206 — set_data переписан: fresh_hidden заменяет накопительный .setdefault().append(), вычисляются и удаляются evicted-ключи, метод возвращает set gui.py:1591 — обычный режим таблицы: reset_hidden=True → reset_hidden=False, добавлено логирование evicted gui.py:1597 — animated-режим: аналогично захватывает evicted и логирует gui.py — новый метод _log_evicted_hidden пишет в log_manager через winfo_toplevel()
+* task/#34/V.6.2.2 BUG-81 ╨г╨┤╨░╨╗╨╡╨╜╨░ ╤Д╤Г╨╜╨║╤Ж╨╕╤П _inject_parent_tag (╨▒╤Л╨╗╨░ ╨╝╤С╤А╤В╨▓╤Л╨╝ ╨║╨╛╨┤╨╛╨╝ ╨┐╨╛╤Б╨╗╨╡ ╤Д╨╕╨║╤Б╨░) ╨е╨▓╨╛╤Б╤В _bind_cell_select ╨▓╨╛╨╖╨▓╤А╨░╤Й╤С╨╜ ╨║ ╤А╨╡╨║╤Г╤А╤Б╨╕╨▓╨╜╨╛╨╝╤Г _bind_cell_select(child, value, panel) тАФ ╨║╨░╨╢╨┤╤Л╨╣ Canvas ╨▓╨╜╤Г╤В╤А╨╕ DeltaWidget / Display1Widget / WaveWidget ╨╕ ╨┤╤А. ╤Б╨╜╨╛╨▓╨░ ╨┐╨╛╨╗╤Г╤З╨░╨╡╤В ╨╖╨░╨╝╤Л╨║╨░╨╜╨╕╤П ╤Б ╨┐╤А╨░╨▓╨╕╨╗╤М╨╜╤Л╨╝ value ╤Б╨▓╨╛╨╡╨╣ ╨║╨╛╨╗╨╛╨╜╨║╨╕ takefocus=0 ╨╜╨░ Canvas ╤Б╨╛╤Е╤А╨░╨╜╤С╨╜ (╤Б╤В╤А╨╛╨║╨░ 1224тАУ1228, ╨▒╨╡╨╖ ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╣)
