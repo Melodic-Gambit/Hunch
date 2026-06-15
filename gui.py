@@ -2293,6 +2293,9 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
         self._gf_daily_after_id = None
         self._gf_cal_after_id   = None
         self._gf_stop_event     = threading.Event()  # сигнал отмены фоновых потоков
+
+        # SQL Выгрузка scheduler after-ID
+        self._sql_export_after_id = None
         # Объединение уведомлений расписания (daily + calendar в одно сообщение)
         self._gf_pending_sched_sources: set  = set()
         self._gf_merge_notif_id:        object = None

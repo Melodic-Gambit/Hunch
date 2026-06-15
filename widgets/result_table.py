@@ -412,7 +412,8 @@ class ResultTable(ctk.CTkFrame):
     def _copy_row_column_format(self, item):
         vals = self._tree.item(item, "values")
         actual_vals = vals[3:]  # skip _bulb_, _copy_, _row_ columns
-        self._clip("\n".join(str(v) for v in actual_vals))
+        lines = [f"[{col}]: {v}" for col, v in zip(self._columns, actual_vals)]
+        self._clip("\n".join(lines))
         try:
             self._tree.set(item, "_copy_", "✓")
             self.after(600, lambda: self._restore_copy_icon(item))

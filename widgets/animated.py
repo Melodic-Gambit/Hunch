@@ -1249,6 +1249,59 @@ class AnimatedPanel(tk.Frame):
         self._top_bound = False
         self._bound_toplevel = None   # toplevel, на который добавлены биндинги (BUG-70)
         self._bind_funcids = {}       # seq → funcid для точечного unbind (BUG-71)
+        self._col_widths:      dict = {}   # {col_idx: width_px}; персистируется в settings
+        self._resize_col:      int  = -1
+        self._resize_start_x:  int  = 0
+        self._resize_start_w:  int  = 100
+
+    def _load_col_widths(self):
+        try:
+            top = self.winfo_toplevel()
+            sm  = getattr(top, "settings_manager", None)
+            pid = getattr(self.master, "panel_id", None)
+            if sm is None or pid is None:
+                return
+            saved = (sm.get_setting("dashboard", {}) or {}).get(
+                "panels", {}).get(str(pid), {}).get("col_widths", {})
+            self._col_widths = {int(k): int(v) for k, v in saved.items()}
+        except Exception:
+            pass
+
+    def _save_col_widths(self):
+        try:
+            top = self.winfo_toplevel()
+            sm  = getattr(top, "settings_manager", None)
+            pid = getattr(self.master, "panel_id", None)
+            if sm is None or pid is None:
+                return
+            dash = sm.get_setting("dashboard", {}) or {}
+            dash.setdefault("panels", {}).setdefault(str(pid), {})[
+                "col_widths"] = {str(k): v for k, v in self._col_widths.items()}
+            sm.set_setting("dashboard", dash)
+        except Exception:
+            pass
+
+    def _resize_start(self, event, col_idx, hdr_widget):
+        self._resize_col     = col_idx
+        self._resize_start_x = event.x_root
+        saved = self._col_widths.get(col_idx, 0)
+        if saved > 0:
+            self._resize_start_w = saved
+        else:
+            try:
+                self._resize_start_w = max(40, hdr_widget.winfo_width())
+            except Exception:
+                self._resize_start_w = 100
+
+    def _resize_drag(self, event, col_idx, ncols):
+        delta = event.x_root - self._resize_start_x
+        new_w = max(40, self._resize_start_w + delta)
+        self._col_widths[col_idx] = new_w
+        if self._sf is not None and col_idx < ncols - 1:
+            self._sf.grid_columnconfigure(2 + col_idx * 2, weight=0, minsize=new_w)
+
+    def _resize_end(self, event, col_idx):
+        self._save_col_widths()
 
     def render(self, rows: list, columns: list, viz_configs: dict,
                age_data: dict = None, delta_data: dict = None, font_size: int = 10):
@@ -1261,6 +1314,7 @@ class AnimatedPanel(tk.Frame):
             self._sf = None
         self._selected_value = None
         self._cell_info_lbl = None
+        self._load_col_widths()
 
         bg = _viz_bg()
         self.configure(bg=bg)
@@ -1275,12 +1329,18 @@ class AnimatedPanel(tk.Frame):
         sf = ctk.CTkScrollableFrame(self, fg_color=("gray87", "#272727"))
         sf.grid(row=0, column=0, sticky="nsew")
         self._sf = sf
-        # col 0 = bulb (FEAT-18), col 1 = №, cols 2..ncols+1 = data, col ncols+2 = copy
+        # col 0=bulb, col 1=№, data at 2+ci*2, sep at 3+ci*2 (between cols), copy at ncols*2+1
         sf.grid_columnconfigure(0, weight=0, minsize=24)
         sf.grid_columnconfigure(1, weight=0, minsize=40)
         for ci in range(ncols):
-            sf.grid_columnconfigure(ci + 2, weight=1)
-        sf.grid_columnconfigure(ncols + 2, weight=0, minsize=32)
+            saved_w = self._col_widths.get(ci, 0)
+            if saved_w > 0 and ci < ncols - 1:
+                sf.grid_columnconfigure(2 + ci * 2, weight=0, minsize=saved_w)
+            else:
+                sf.grid_columnconfigure(2 + ci * 2, weight=1)
+            if ci < ncols - 1:
+                sf.grid_columnconfigure(3 + ci * 2, weight=0, minsize=4)
+        sf.grid_columnconfigure(ncols * 2 + 1, weight=0, minsize=32)
 
         # Строка заголовков
         ctk.CTkLabel(sf, text="", anchor="center",
@@ -1290,20 +1350,30 @@ class AnimatedPanel(tk.Frame):
                      font=ctk.CTkFont(size=10, weight="bold")
                      ).grid(row=0, column=1, sticky="ew", padx=(2, 4), pady=(4, 1))
         for ci, col_name in enumerate(columns):
-            ctk.CTkLabel(sf, text=col_name, anchor="w",
-                         font=ctk.CTkFont(size=10, weight="bold")
-                         ).grid(row=0, column=ci + 2, sticky="ew", padx=(6, 2), pady=(4, 1))
+            hdr = ctk.CTkLabel(sf, text=col_name, anchor="w",
+                               font=ctk.CTkFont(size=10, weight="bold"))
+            hdr.grid(row=0, column=2 + ci * 2, sticky="ew", padx=(6, 2), pady=(4, 1))
+            if ci < ncols - 1:
+                sep = ctk.CTkFrame(sf, width=4, cursor="sb_h_double_arrow",
+                                   fg_color=("gray55", "gray45"))
+                sep.grid(row=0, column=3 + ci * 2, sticky="ns", pady=(4, 1))
+                sep.bind("<ButtonPress-1>",
+                         lambda e, c=ci, h=hdr: self._resize_start(e, c, h))
+                sep.bind("<B1-Motion>",
+                         lambda e, c=ci, n=ncols: self._resize_drag(e, c, n))
+                sep.bind("<ButtonRelease-1>",
+                         lambda e, c=ci: self._resize_end(e, c))
         ctk.CTkLabel(sf, text="⎘", anchor="center",
                      font=ctk.CTkFont(size=11)
-                     ).grid(row=0, column=ncols + 2, padx=(2, 4), pady=(4, 1))
+                     ).grid(row=0, column=ncols * 2 + 1, padx=(2, 4), pady=(4, 1))
 
         ctk.CTkFrame(sf, height=1, fg_color=("gray65", "gray40")
-                     ).grid(row=1, column=0, columnspan=ncols + 3,
+                     ).grid(row=1, column=0, columnspan=ncols * 2 + 2,
                             sticky="ew", padx=4, pady=(0, 2))
 
         if not display_rows:
             ctk.CTkLabel(sf, text="Нет данных", font=ctk.CTkFont(size=10)
-                         ).grid(row=2, column=0, columnspan=ncols + 3, padx=8, pady=8)
+                         ).grid(row=2, column=0, columnspan=ncols * 2 + 2, padx=8, pady=8)
             return
 
         _OFFSET_TYPES = {"Индикатор 1", "Индикатор 2", "Индикатор - круги",
@@ -1334,10 +1404,13 @@ class AnimatedPanel(tk.Frame):
                 except Exception:
                     pass
 
-        def _make_bulb_menu(row_data):
+        def _make_bulb_menu(row_data, row_cols):
             def _show(event):
                 first_val = str(row_data[0]) if row_data else ""
-                row_text  = "\n".join("" if v is None else str(v) for v in row_data)
+                row_text  = "\n".join(
+                    f"[{col}]: {'' if v is None else str(v)}"
+                    for col, v in zip(row_cols, row_data)
+                )
                 menu = tk.Menu(sf, tearoff=0)
                 top = sf.winfo_toplevel()
                 if hasattr(top, "_open_reminder_for_row"):
@@ -1388,7 +1461,7 @@ class AnimatedPanel(tk.Frame):
             bulb_lbl.bind("<Leave>", _leave)
             row_num_lbl.bind("<Enter>", _enter)
             row_num_lbl.bind("<Leave>", _leave)
-            bulb_lbl.bind("<Button-1>", _make_bulb_menu(row))
+            bulb_lbl.bind("<Button-1>", _make_bulb_menu(row, columns))
 
             for ci, col_name in enumerate(columns):
                 cfg   = viz_configs.get(col_name, {})
@@ -1564,11 +1637,14 @@ class AnimatedPanel(tk.Frame):
                 else:
                     w = _make_compact_cell(sf, vtype, color, raw, cfg, font_size)
 
-                w.grid(row=ri + 2, column=ci + 2, sticky="ew", padx=(6, 2), pady=1)
+                w.grid(row=ri + 2, column=2 + ci * 2, sticky="ew", padx=(6, 2), pady=1)
                 _bind_cell_select(w, "" if raw is None else str(raw), self)
 
-            def _do_copy(r=row):
-                text = "\n".join("" if v is None else str(v) for v in r)
+            def _do_copy(r=row, cols=columns):
+                text = "\n".join(
+                    f"[{col}]: {'' if v is None else str(v)}"
+                    for col, v in zip(cols, r)
+                )
                 top = sf.winfo_toplevel()
                 top.clipboard_clear()
                 top.clipboard_append(text)
@@ -1579,19 +1655,19 @@ class AnimatedPanel(tk.Frame):
                 fg_color="transparent",
                 hover_color=("gray75", "gray35"),
                 command=_do_copy,
-            ).grid(row=ri + 2, column=ncols + 2, padx=(2, 4), pady=1)
+            ).grid(row=ri + 2, column=ncols * 2 + 1, padx=(2, 4), pady=1)
 
         if len(rows) > self._MAX_ROWS:
             ctk.CTkLabel(sf,
                          text=f"… первые {self._MAX_ROWS} из {len(rows)} строк",
                          font=ctk.CTkFont(size=9),
                          text_color=("gray50", "gray55")
-                         ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols + 3,
+                         ).grid(row=len(display_rows) + 2, column=0, columnspan=ncols * 2 + 2,
                                 sticky="w", padx=6, pady=(2, 4))
 
         # ── строка выделения ячейки (BUG-69) ──────────────────────────────────
         info_f = ctk.CTkFrame(sf, fg_color=("gray83", "gray22"), corner_radius=4)
-        info_f.grid(row=999, column=0, columnspan=ncols + 3,
+        info_f.grid(row=999, column=0, columnspan=ncols * 2 + 2,
                     sticky="ew", padx=4, pady=(2, 4))
         info_f.grid_columnconfigure(0, weight=1)
         self._cell_info_lbl = ctk.CTkLabel(
