@@ -131,7 +131,7 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
             row=0, column=0, sticky="w")
         self._folder_var = tk.StringVar(value=cfg("sql_export_folder", ""))
         ctk.CTkEntry(row_f, textvariable=self._folder_var,
-                     placeholder_text=r"C:\Reports\ или \\server\share\",
+                     placeholder_text=r"C:\Reports или \\server\share",
                      height=30).grid(row=0, column=1, sticky="ew", padx=(6, 4))
         ctk.CTkButton(row_f, text="📂", width=30, height=30,
                       command=self._browse_folder,
