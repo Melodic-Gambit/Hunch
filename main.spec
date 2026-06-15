@@ -27,6 +27,9 @@ a = Analysis(
         # System tray
         'pystray',
         'pystray._win32',
+        # SQL Выгрузка
+        'widgets.sql_export_service',
+        'widgets.sql_export_settings_dialog',
     ],
     hookspath=[],
     hooksconfig={},
