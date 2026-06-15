@@ -91,7 +91,7 @@ class SettingsTabMixin:
                       width=150, height=30).grid(row=2, column=0, pady=(0, 8), sticky="w")
 
         rf7 = _row(3, "Количество фреймов")
-        self.panel_count_entry = ctk.CTkEntry(rf7, placeholder_text="1–6", width=70, height=32)
+        self.panel_count_entry = ctk.CTkEntry(rf7, placeholder_text="1–8", width=70, height=32)
         saved_count = self.settings_manager.get_setting("dashboard", {}).get("panel_count", 3)
         self.panel_count_entry.insert(0, str(saved_count))
         self.panel_count_entry.pack(side="left", padx=(0, 8))
@@ -351,10 +351,10 @@ class SettingsTabMixin:
         val = self.panel_count_entry.get().strip()
         try:
             count = int(val)
-            if not (1 <= count <= 6):
+            if not (1 <= count <= 8):
                 raise ValueError
         except ValueError:
-            messagebox.showerror("Ошибка", "Введите целое число от 1 до 6")
+            messagebox.showerror("Ошибка", "Введите целое число от 1 до 8")
             return
         self._rebuild_dashboard(count)   # template сохраняется из _current_template
         self._refresh_frames_table()
@@ -1069,9 +1069,9 @@ class SettingsTabMixin:
         panels = getattr(self, "dash_panels", [])
 
         if panel_idx is None:
-            if len(panels) >= 6:
+            if len(panels) >= 8:
                 messagebox.showwarning("Ограничение",
-                                       "Максимальное количество фреймов: 6")
+                                       "Максимальное количество фреймов: 8")
                 return
             current_query       = ""
             current_render      = "Таблица"

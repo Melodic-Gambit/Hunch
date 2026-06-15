@@ -514,7 +514,7 @@ class DashboardTabMixin:
         self._paned_windows:        dict = {}
         saved = self.settings_manager.get_setting("dashboard", {})
         count = saved.get("panel_count", 3)
-        self._dashboard_panel_count = max(1, min(6, count))
+        self._dashboard_panel_count = max(1, min(8, count))
         _ffs = saved.get("frame_font_size", 10)
         self._dashboard_frame_font_size = _ffs if isinstance(_ffs, int) and 8 <= _ffs <= 14 else 10
         self._build_dashboard_panes(self._dashboard_panel_count)

@@ -1109,8 +1109,17 @@ class QueriesTabMixin:
                         self._get_conn_meta(f).get("update_interval", 0) > 0:
                     self._conn_last_refresh[f] = now
         self._schedule_all_timers()
+        # Инициализировать countdown-кэши для запросов без собственного интервала
+        if os.path.exists(cfg_dir):
+            for conn_f in os.listdir(cfg_dir):
+                if conn_f.endswith(".json"):
+                    iv = self._get_conn_meta(conn_f).get("update_interval", 0)
+                    if iv > 0:
+                        db_display = self.data_manager.get_db_display_name(conn_f)
+                        self._refresh_query_schedule_cache_for_conn(db_display, iv, now)
         self._test_all_connections_async()
         self._gf_schedule_start()
+        self._sql_export_schedule_next()
         self._start_reminder_check()
 
     def _restart_auto_timers(self):
@@ -1127,7 +1136,18 @@ class QueriesTabMixin:
                 pass
         self._query_timers.clear()
         self._conn_timers.clear()
+        self._query_scheduled_at.clear()
+        self._query_intervals_cache.clear()
         self._schedule_all_timers()
+        now = datetime.datetime.now()
+        cfg_dir = self.data_manager.config_dir
+        if os.path.exists(cfg_dir):
+            for conn_f in os.listdir(cfg_dir):
+                if conn_f.endswith(".json"):
+                    iv = self._get_conn_meta(conn_f).get("update_interval", 0)
+                    if iv > 0:
+                        db_display = self.data_manager.get_db_display_name(conn_f)
+                        self._refresh_query_schedule_cache_for_conn(db_display, iv, now)
 
     def _schedule_all_timers(self):
         qdir = self.data_manager.queries_dir
@@ -1349,6 +1369,7 @@ class QueriesTabMixin:
         self._conn_last_refresh[conn_file] = now
         db_display = self.data_manager.get_db_display_name(conn_file)
         self._refresh_panels_for_db(db_display)
+        self._refresh_query_schedule_cache_for_conn(db_display, interval_min, now)
         self._schedule_conn_refresh(conn_file, interval_min)
         self.log_manager.add_log(
             f"Последнее время обновления: {now.strftime('%H:%M:%S')}")
@@ -1367,6 +1388,25 @@ class QueriesTabMixin:
                 continue
             if self._get_query_meta(query_file).get("database", "") == db_display:
                 self._update_panel_from_cache(panel, query_file)
+
+    def _refresh_query_schedule_cache_for_conn(self, db_display: str, interval_min: int,
+                                                scheduled_at: "datetime.datetime"):
+        """Обновляет _query_scheduled_at/_query_intervals_cache для запросов без собственного интервала."""
+        qdir = self.data_manager.queries_dir
+        if not os.path.exists(qdir):
+            return
+        for f in os.listdir(qdir):
+            if not f.endswith(".sql"):
+                continue
+            meta = self._get_query_meta(f)
+            if meta.get("database", "") != db_display:
+                continue
+            if meta.get("update_interval", 0) > 0:
+                continue
+            if (meta.get("cron_schedule") or {}).get("enabled"):
+                continue
+            self._query_scheduled_at[f]    = scheduled_at
+            self._query_intervals_cache[f] = interval_min
 
     def _force_refresh_all(self):
         """Принудительно перезапускает выполнение всех запросов."""

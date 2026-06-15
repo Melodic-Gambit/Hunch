@@ -7,6 +7,8 @@ import customtkinter as ctk
 import theme_colors
 from widgets.gf_scraping_module import GFScrapingWindow, _gf_fetch_latest_numbers
 from widgets.gf_service_settings_dialog import GFServiceSettingsDialog
+from widgets.sql_export_service import SqlExportService, SQL_EXPORT_VERSION
+from widgets.sql_export_settings_dialog import SqlExportSettingsDialog
 
 try:
     from PIL import Image
@@ -37,6 +39,7 @@ class ServicesTabMixin:
         self._svc_card_frames = {}
 
         self._build_service_card_gf_scraping(scroll)
+        self._build_service_card_sql_export(scroll)
         self._build_service_card_instruktsiya(scroll)
 
         self.after(300, lambda: self._svc_setup_drag(scroll))
@@ -282,7 +285,7 @@ class ServicesTabMixin:
         card = ctk.CTkFrame(parent, corner_radius=10,
                             border_width=0,
                             border_color=[theme_colors.accent(), theme_colors.hover()])
-        card.grid(row=1, column=0, padx=20, pady=(3, 6), sticky="ew")
+        card.grid(row=2, column=0, padx=20, pady=(3, 6), sticky="ew")
         card.grid_columnconfigure(0, weight=1)
 
         def _hover_enter(e):
@@ -778,7 +781,7 @@ class ServicesTabMixin:
         spacer(s, 4)
         row(s, "Выбор шаблона",
             "В «Настройки → Количество фреймов → Шаблон…» откроется диалог с карточками "
-            "доступных шаблонов. В том же диалоге можно сразу изменить количество фреймов (1–6).")
+            "доступных шаблонов. В том же диалоге можно сразу изменить количество фреймов (1–8).")
         spacer(s, 4)
         row(s, "Авто", "Поведение по умолчанию: два равных столбца, фреймы распределяются "
             "автоматически.", indent=20)
@@ -1382,4 +1385,448 @@ class ServicesTabMixin:
         self.settings_manager.set_setting("gf_scraping_last_check", ts)
         if hasattr(self, "_gf_last_check_lbl"):
             self._gf_last_check_lbl.configure(text=ts)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Сервис «SQL Выгрузка»
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _build_service_card_sql_export(self, parent):
+        """Строит карточку сервиса «SQL Выгрузка» на вкладке Сервисы."""
+        _dot_on  = ("#22C55E", "#16A34A")
+        _dot_off = ("gray60", "gray50")
+        _LBL_FNT = ctk.CTkFont(size=13)
+        _VAL_FNT = ctk.CTkFont(size=13, weight="bold")
+
+        # ── читаем сохранённые настройки ─────────────────────────────────────
+        cfg = self.settings_manager.get_setting
+        _saved_active = cfg("sql_export_active", False)
+        _saved_notif  = cfg("sql_export_notifications", True)
+
+        self._sql_export_active_var = tk.BooleanVar(value=_saved_active)
+        self._sql_export_notif_var  = tk.BooleanVar(value=_saved_notif)
+
+        # ── создаём SqlExportService ──────────────────────────────────────────
+        self._sql_export_service = SqlExportService(
+            db_manager=self.db_manager,
+            log_cb=self.log_manager.add_log,
+        )
+
+        # ── иконка ───────────────────────────────────────────────────────────
+        _icon_img = None
+        if _PIL_OK:
+            try:
+                _base = (sys._MEIPASS if getattr(sys, "frozen", False)
+                         else os.path.dirname(os.path.abspath(__file__)))
+                _icon_path = os.path.join(_base, "sql_export.png")
+                if os.path.exists(_icon_path):
+                    _pil = Image.open(_icon_path)
+                    _icon_img = ctk.CTkImage(
+                        light_image=_pil, dark_image=_pil, size=(29, 29))
+            except Exception:
+                pass
+
+        # ── карточка ─────────────────────────────────────────────────────────
+        card = ctk.CTkFrame(parent, corner_radius=10,
+                            border_width=0,
+                            border_color=[theme_colors.accent(), theme_colors.hover()])
+        card.grid(row=1, column=0, padx=20, pady=(3, 3), sticky="ew")
+        card.grid_columnconfigure(0, weight=1)
+
+        def _hover_enter(e):
+            card.configure(border_width=2)
+
+        def _hover_leave(e):
+            try:
+                x, y = card.winfo_pointerx(), card.winfo_pointery()
+                cx, cy = card.winfo_rootx(), card.winfo_rooty()
+                if not (cx <= x < cx + card.winfo_width()
+                        and cy <= y < cy + card.winfo_height()):
+                    card.configure(border_width=0)
+            except Exception:
+                card.configure(border_width=0)
+
+        def _bind_hover(w):
+            try:
+                w.bind("<Enter>", _hover_enter, add="+")
+                w.bind("<Leave>", _hover_leave, add="+")
+            except Exception:
+                pass
+            for ch in w.winfo_children():
+                _bind_hover(ch)
+
+        # ── title row ─────────────────────────────────────────────────────────
+        title_row = ctk.CTkFrame(card, fg_color="transparent")
+        title_row.grid(row=0, column=0, padx=16, pady=(7, 2), sticky="ew")
+        title_row.grid_columnconfigure(1, weight=1)
+
+        if _icon_img:
+            ctk.CTkLabel(title_row, image=_icon_img, text="").grid(
+                row=0, column=0, padx=(0, 8))
+        else:
+            ctk.CTkLabel(title_row, text="📤",
+                         font=ctk.CTkFont(size=20)).grid(
+                row=0, column=0, padx=(0, 8))
+
+        ctk.CTkLabel(title_row, text="SQL Выгрузка",
+                     font=ctk.CTkFont(size=17, weight="bold"),
+                     anchor="w").grid(row=0, column=1, sticky="w")
+
+        _v_row = ctk.CTkFrame(title_row, fg_color="transparent")
+        _v_row.grid(row=0, column=2, padx=(8, 0), sticky="ne")
+        ctk.CTkLabel(_v_row, text=SQL_EXPORT_VERSION,
+                     font=ctk.CTkFont(size=11),
+                     text_color=("gray50", "gray60")).pack(side="left")
+        ctk.CTkButton(
+            _v_row, text="⚙", width=22, height=20,
+            font=ctk.CTkFont(size=11),
+            fg_color=[theme_colors.accent(), theme_colors.hover()],
+            hover_color=[theme_colors.hover(), theme_colors.dark()],
+            text_color="white",
+            command=self._open_sql_export_settings,
+        ).pack(side="left", padx=(5, 0))
+
+        # ── описание ──────────────────────────────────────────────────────────
+        ctk.CTkLabel(
+            card,
+            text=("Автоматическая выгрузка SQL-запросов в Excel по расписанию.\n"
+                  "Результаты сохраняются на сетевой диск в XLSX-файл"
+                  " с отдельной вкладкой на каждый запрос."),
+            font=ctk.CTkFont(size=14),
+            text_color=("gray50", "gray60"),
+            anchor="w",
+            justify="left",
+            wraplength=800,
+        ).grid(row=1, column=0, padx=16, pady=(4, 4), sticky="ew")
+
+        # ── нижняя строка: кнопка + info + переключатели ──────────────────────
+        last_row = ctk.CTkFrame(card, fg_color="transparent", height=1)
+        last_row.grid(row=2, column=0, padx=16, pady=(4, 8), sticky="ew")
+
+        # ── кнопка «Выгрузить сейчас» + hint ─────────────────────────────────
+        btn_col = ctk.CTkFrame(last_row, fg_color="transparent")
+        btn_col.pack(side="left")
+
+        self._sql_export_btn = ctk.CTkButton(
+            btn_col, text="▶  Выгрузить сейчас",
+            width=160, height=28,
+            fg_color=[theme_colors.accent(), theme_colors.hover()],
+            hover_color=[theme_colors.hover(), theme_colors.dark()],
+            command=self._sql_export_run_now,
+        )
+        self._sql_export_btn.pack(anchor="w")
+
+        self._sql_export_hint_lbl = ctk.CTkLabel(
+            btn_col, text=self._sql_export_next_run_text(),
+            font=ctk.CTkFont(size=11),
+            text_color=("gray45", "gray55"),
+            anchor="w")
+        self._sql_export_hint_lbl.pack(anchor="w", pady=(2, 0))
+
+        # ── info-поля ─────────────────────────────────────────────────────────
+        info_c = ctk.CTkFrame(last_row, fg_color="transparent", height=1)
+        info_c.pack(side="left", padx=(24, 0))
+
+        ctk.CTkLabel(info_c, text="Последняя выгрузка:",
+                     font=_LBL_FNT, text_color=("gray50", "gray60"),
+                     anchor="w").pack(side="left")
+
+        _saved_last_run = cfg("sql_export_last_run", None)
+        _last_run_text  = _saved_last_run if _saved_last_run else "— не выполнялась —"
+        self._sql_export_last_run_lbl = ctk.CTkLabel(
+            info_c, text=_last_run_text,
+            font=_VAL_FNT,
+            text_color=("gray50", "gray60") if not _saved_last_run
+                       else ("gray20", "white"),
+            anchor="w")
+        self._sql_export_last_run_lbl.pack(side="left", padx=(4, 0))
+
+        ctk.CTkLabel(info_c, text="  |  ",
+                     font=_LBL_FNT, text_color=("gray60", "gray50")).pack(side="left")
+
+        ctk.CTkLabel(info_c, text="Запросов:",
+                     font=_LBL_FNT, text_color=("gray50", "gray60")).pack(side="left")
+        _saved_qs    = cfg("sql_export_queries", [])
+        _active_cnt  = sum(1 for q in _saved_qs if q.get("enabled", True))
+        self._sql_export_queries_lbl = ctk.CTkLabel(
+            info_c,
+            text=f"{_active_cnt} активных" if _saved_qs else "не настроены",
+            font=_VAL_FNT,
+            text_color=("gray20", "white") if _saved_qs else ("gray50", "gray60"),
+            anchor="w")
+        self._sql_export_queries_lbl.pack(side="left", padx=(4, 0))
+
+        ctk.CTkLabel(info_c, text="  |  ",
+                     font=_LBL_FNT, text_color=("gray60", "gray50")).pack(side="left")
+
+        ctk.CTkLabel(info_c, text="Файл:",
+                     font=_LBL_FNT, text_color=("gray50", "gray60")).pack(side="left")
+        _tpl = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
+        _tpl_short = _tpl if len(_tpl) <= 22 else _tpl[:19] + "…"
+        self._sql_export_file_lbl = ctk.CTkLabel(
+            info_c, text=_tpl_short,
+            font=_VAL_FNT,
+            text_color=("gray20", "white"),
+            anchor="w")
+        self._sql_export_file_lbl.pack(side="left", padx=(4, 0))
+
+        # ── переключатели ─────────────────────────────────────────────────────
+        sw_col = ctk.CTkFrame(last_row, fg_color="transparent", height=1)
+        sw_col.pack(side="right")
+
+        def _on_notif_toggle():
+            self.settings_manager.set_setting(
+                "sql_export_notifications", self._sql_export_notif_var.get())
+
+        ctk.CTkSwitch(
+            sw_col, text="Уведомления",
+            variable=self._sql_export_notif_var,
+            onvalue=True, offvalue=False,
+            font=ctk.CTkFont(size=14),
+            switch_width=32, switch_height=14,
+            command=_on_notif_toggle,
+        ).pack(side="top", anchor="w")
+
+        sw_active_row = ctk.CTkFrame(sw_col, fg_color="transparent", height=1)
+        sw_active_row.pack(side="top", anchor="w")
+
+        def _on_active_toggle():
+            val = self._sql_export_active_var.get()
+            dot_lbl.configure(text_color=_dot_on if val else _dot_off)
+            self.settings_manager.set_setting("sql_export_active", val)
+            if val:
+                self._sql_export_schedule_next()
+            else:
+                aid = getattr(self, "_sql_export_after_id", None)
+                if aid is not None:
+                    try:
+                        self.after_cancel(aid)
+                    except Exception:
+                        pass
+                    self._sql_export_after_id = None
+                self._sql_export_hint_lbl.configure(
+                    text="Расписание отключено")
+
+        ctk.CTkSwitch(
+            sw_active_row, text="Активен",
+            variable=self._sql_export_active_var,
+            onvalue=True, offvalue=False,
+            font=ctk.CTkFont(size=14),
+            switch_width=32, switch_height=14,
+            command=_on_active_toggle,
+        ).pack(side="left")
+
+        dot_lbl = ctk.CTkLabel(sw_active_row, text="●",
+                               font=ctk.CTkFont(size=14),
+                               text_color=_dot_on if _saved_active else _dot_off,
+                               width=20)
+        dot_lbl.pack(side="left", padx=(4, 0))
+
+        self.after(50, lambda: _bind_hover(card))
+
+        self._svc_card_order.append("sql_export")
+        self._svc_card_frames["sql_export"] = card
+
+    # ── настройки ─────────────────────────────────────────────────────────────
+
+    def _open_sql_export_settings(self):
+        """Открывает диалог настроек SQL Выгрузки."""
+        conns = []
+        cfg_dir = getattr(self.db_manager, "config_dir", "config")
+        if os.path.isdir(cfg_dir):
+            conns = sorted(
+                f[:-5] for f in os.listdir(cfg_dir) if f.endswith(".json"))
+
+        qdir = getattr(self.data_manager, "queries_dir", "queries")
+
+        SqlExportSettingsDialog(
+            self,
+            settings_manager=self.settings_manager,
+            queries_dir=qdir,
+            connections=conns,
+            on_saved=self._on_sql_export_settings_saved,
+        )
+
+    def _on_sql_export_settings_saved(self):
+        """Вызывается после сохранения настроек сервиса."""
+        self._sql_export_update_card_labels()
+        # Перезапускаем планировщик если сервис активен
+        if self._sql_export_active_var.get():
+            aid = getattr(self, "_sql_export_after_id", None)
+            if aid is not None:
+                try:
+                    self.after_cancel(aid)
+                except Exception:
+                    pass
+                self._sql_export_after_id = None
+            self._sql_export_schedule_next()
+
+    def _sql_export_update_card_labels(self):
+        """Обновляет метки карточки из текущих настроек."""
+        cfg = self.settings_manager.get_setting
+        qs  = cfg("sql_export_queries", [])
+        cnt = sum(1 for q in qs if q.get("enabled", True))
+        if hasattr(self, "_sql_export_queries_lbl"):
+            self._sql_export_queries_lbl.configure(
+                text=f"{cnt} активных" if qs else "не настроены",
+                text_color=("gray20", "white") if qs else ("gray50", "gray60"),
+            )
+        tpl = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
+        tpl_short = tpl if len(tpl) <= 22 else tpl[:19] + "…"
+        if hasattr(self, "_sql_export_file_lbl"):
+            self._sql_export_file_lbl.configure(text=tpl_short)
+        if hasattr(self, "_sql_export_hint_lbl"):
+            self._sql_export_hint_lbl.configure(
+                text=self._sql_export_next_run_text())
+
+    # ── планировщик ───────────────────────────────────────────────────────────
+
+    def _sql_export_schedule_next(self):
+        """Вычисляет время до следующего запуска и ставит after()."""
+        if not self.settings_manager.get_setting("sql_export_active", False):
+            return
+
+        cfg  = self.settings_manager.get_setting
+        hour = int(cfg("sql_export_schedule_hour", 19))
+        minute = int(cfg("sql_export_schedule_minute", 0))
+        days  = cfg("sql_export_schedule_days", [0, 1, 2, 3, 4])
+
+        now    = datetime.datetime.now()
+        target = now.replace(hour=hour, minute=minute,
+                             second=0, microsecond=0)
+
+        # ищем ближайший разрешённый день
+        for offset in range(8):
+            candidate = target + datetime.timedelta(days=offset)
+            if candidate <= now:
+                continue
+            # weekday(): 0=Пн … 6=Вс  — совпадает с нашим форматом
+            if candidate.weekday() in days:
+                delay_ms = int((candidate - now).total_seconds() * 1000)
+                if delay_ms > 0:
+                    self._sql_export_after_id = self.after(
+                        delay_ms, self._sql_export_tick)
+                    if hasattr(self, "_sql_export_hint_lbl"):
+                        self._sql_export_hint_lbl.configure(
+                            text=self._sql_export_next_run_text(candidate))
+                return
+
+        # Ни одного разрешённого дня — не планируем
+        if hasattr(self, "_sql_export_hint_lbl"):
+            self._sql_export_hint_lbl.configure(text="Нет активных дней")
+
+    def _sql_export_tick(self):
+        """Срабатывание планировщика: запуск выгрузки + планирование следующего."""
+        self._sql_export_after_id = None
+        if not self.settings_manager.get_setting("sql_export_active", False):
+            return
+        self._sql_export_do_export()
+        self._sql_export_schedule_next()
+
+    def _sql_export_next_run_text(self, dt: datetime.datetime = None) -> str:
+        """Возвращает текст 'Следующий запуск: ...' для hint-метки."""
+        if not self.settings_manager.get_setting("sql_export_active", False):
+            return "Расписание отключено"
+        if dt is None:
+            return "Следующий запуск: вычисляется…"
+        now = datetime.datetime.now()
+        if dt.date() == now.date():
+            return f"Следующий запуск: {dt.strftime('%H:%M')}"
+        return f"Следующий запуск: {dt.strftime('%d.%m %H:%M')}"
+
+    # ── выгрузка ──────────────────────────────────────────────────────────────
+
+    def _sql_export_run_now(self):
+        """Ручной запуск выгрузки."""
+        if self._sql_export_service.is_running():
+            return
+        self._sql_export_do_export()
+
+    def _sql_export_do_export(self):
+        """Запускает выгрузку в фоновом потоке; обновляет кнопку на время работы."""
+        cfg = self.settings_manager.get_setting
+        queries  = cfg("sql_export_queries", [])
+        folder   = cfg("sql_export_folder", "")
+        tpl      = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
+        wmode    = cfg("sql_export_write_mode", "overwrite")
+        smode    = cfg("sql_export_sheet_mode", "per_query")
+
+        if not folder:
+            if hasattr(self, "_sql_export_hint_lbl"):
+                self._sql_export_hint_lbl.configure(
+                    text="⚠ Укажите папку в настройках (⚙)")
+            return
+
+        if hasattr(self, "_sql_export_btn"):
+            try:
+                self._sql_export_btn.configure(
+                    text="⏳  Выполняется…", state="disabled")
+            except Exception:
+                pass
+        if hasattr(self, "_sql_export_hint_lbl"):
+            self._sql_export_hint_lbl.configure(text="Подключение к БД…")
+
+        def _on_done(filename: str, error: str):
+            self.after(0, lambda: self._sql_export_on_done(filename, error))
+
+        started = self._sql_export_service.start(
+            queries=queries, folder=folder, filename_tpl=tpl,
+            write_mode=wmode, sheet_mode=smode,
+            on_done=_on_done,
+        )
+        if not started:
+            if hasattr(self, "_sql_export_btn"):
+                try:
+                    self._sql_export_btn.configure(
+                        text="▶  Выгрузить сейчас", state="normal")
+                except Exception:
+                    pass
+            if hasattr(self, "_sql_export_hint_lbl"):
+                self._sql_export_hint_lbl.configure(text="Выгрузка уже выполняется…")
+
+    def _sql_export_on_done(self, filename: str, error: str):
+        """Вызывается в главном потоке после завершения выгрузки."""
+        try:
+            self._sql_export_btn.configure(
+                text="▶  Выгрузить сейчас", state="normal")
+        except Exception:
+            pass
+
+        if error:
+            hint = f"⚠ {error}"
+            if hasattr(self, "_sql_export_hint_lbl"):
+                self._sql_export_hint_lbl.configure(text=hint)
+            if self._sql_export_notif_var.get():
+                msg = f"SQL Выгрузка: ошибка — {error}"
+                nid = self._add_notification("SQL Выгрузка", message=msg, system=True)
+                self._show_alert_toast("SQL Выгрузка", msg, notif_id=nid)
+                self._play_sound("service.wav", "service_notification")
+            self.log_manager.add_log(
+                f"[SQL Выгрузка] Ошибка: {error}", "ERROR")
+        else:
+            now_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+            # сохраняем время последнего запуска
+            self.settings_manager.set_setting("sql_export_last_run", now_str)
+            self.settings_manager.set_setting("sql_export_last_file", filename)
+
+            if hasattr(self, "_sql_export_last_run_lbl"):
+                self._sql_export_last_run_lbl.configure(
+                    text=now_str, text_color=("gray20", "white"))
+            if hasattr(self, "_sql_export_hint_lbl"):
+                self._sql_export_hint_lbl.configure(
+                    text=f"✓ Сохранено: {filename}")
+                self.after(4000, lambda: self._sql_export_hint_lbl.configure(
+                    text=self._sql_export_next_run_text()) if hasattr(
+                        self, "_sql_export_hint_lbl") else None)
+
+            if self._sql_export_notif_var.get():
+                msg = f"SQL Выгрузка: файл сохранён — {filename}"
+                nid = self._add_notification("SQL Выгрузка",
+                                             message=msg, system=True)
+                self._show_alert_toast("SQL Выгрузка", msg, notif_id=nid)
+                self._play_sound("service.wav", "service_notification")
+
+            self.log_manager.add_log(
+                f"[SQL Выгрузка] Файл сохранён: {filename}", "INFO")
+
+        self.after(100, self.refresh_logs)
 

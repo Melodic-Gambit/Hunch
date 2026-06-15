@@ -101,7 +101,7 @@ class DashboardLayoutDialog(ctk.CTkToplevel):
         cnt_row.pack(fill="x", padx=20, pady=10)
         ctk.CTkLabel(cnt_row, text="Количество фреймов:",
                      width=180, anchor="w").pack(side="left")
-        self._count_entry = ctk.CTkEntry(cnt_row, placeholder_text="1–6",
+        self._count_entry = ctk.CTkEntry(cnt_row, placeholder_text="1–8",
                                          width=60, height=32)
         self._count_entry.insert(0, str(panel_count))
         self._count_entry.pack(side="left")
@@ -150,12 +150,12 @@ class DashboardLayoutDialog(ctk.CTkToplevel):
     def _apply(self):
         try:
             count = int(self._count_entry.get().strip())
-            if not (1 <= count <= 6):
+            if not (1 <= count <= 8):
                 raise ValueError
         except ValueError:
             from tkinter import messagebox as _mb
             _mb.showerror("Ошибка",
-                          "Количество фреймов: целое число от 1 до 6",
+                          "Количество фреймов: целое число от 1 до 8",
                           parent=self)
             return
         self.result = (self._selected, count)
