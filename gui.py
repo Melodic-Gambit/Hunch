@@ -2609,8 +2609,18 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
                     toast.destroy()),
             ).pack(side="left", padx=(0, 6))
 
+            _auto_close_job = [None]
+
             if installer_url:
                 def _do_install():
+                    # Отменяем автозакрытие — пользователь начал установку
+                    if _auto_close_job[0]:
+                        try:
+                            self.after_cancel(_auto_close_job[0])
+                        except Exception:
+                            pass
+                        _auto_close_job[0] = None
+
                     btn_row.pack_forget()
                     prog_frame.pack(padx=10, pady=(0, 12), fill="x")
                     toast.update_idletasks()
@@ -2620,7 +2630,7 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
                     cy = self.winfo_y() + (self.winfo_height() - th) // 2
                     toast.geometry(f"{tw}x{th}+{cx}+{cy}")
 
-                    import tempfile, urllib.request, subprocess, os as _os
+                    import tempfile, urllib.request, ctypes as _ct, os as _os
                     tmp_path = _os.path.join(
                         tempfile.gettempdir(), f"Hunch_{new_version}_installer.exe")
 
@@ -2643,17 +2653,21 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
                             def _launch():
                                 if toast.winfo_exists():
                                     prog_lbl.configure(text="Запуск установщика…")
-                                subprocess.Popen(
-                                    [tmp_path, "/SILENT",
-                                     "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
-                                self.after(800, self.destroy)
+                                # ShellExecuteW с runas — явный запрос прав администратора
+                                _ct.windll.shell32.ShellExecuteW(
+                                    None, "runas", tmp_path,
+                                    "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+                                    None, 1)
+                                self.after(1500, self.destroy)
                             self.after(0, _launch)
-                        except Exception:
-                            def _on_error():
+                        except Exception as _err:
+                            def _on_error(e=_err):
                                 if not toast.winfo_exists():
                                     return
-                                prog_frame.pack_forget()
-                                btn_row.pack(padx=10, pady=(0, 12), fill="x")
+                                prog_bar.set(0)
+                                prog_lbl.configure(
+                                    text=f"Ошибка: {e}",
+                                    text_color=("#DC2626", "#EF4444"))
                             self.after(0, _on_error)
 
                     _thr.Thread(target=_fetch_and_run, daemon=True).start()
@@ -2672,7 +2686,7 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
                 command=toast.destroy,
             ).pack(side="left")
 
-            # UX-10: по центру окна, 30 с
+            # UX-10: по центру окна, 30 с (отменяется если пользователь нажал «Установить»)
             toast.update_idletasks()
             w = 360 if installer_url else 310
             h = toast.winfo_reqheight() + 6
@@ -2680,7 +2694,8 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
             y = self.winfo_y() + (self.winfo_height() - h) // 2
             toast.geometry(f"{w}x{h}+{x}+{y}")
             toast.deiconify()
-            toast.after(30_000, lambda: toast.destroy() if toast.winfo_exists() else None)
+            _auto_close_job[0] = toast.after(
+                30_000, lambda: toast.destroy() if toast.winfo_exists() else None)
         except Exception:
             pass
 
