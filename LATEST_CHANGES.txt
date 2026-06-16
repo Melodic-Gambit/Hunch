@@ -1,3 +1,3 @@
-﻿Версия v6.2.6
+﻿Версия v6.2.7
 
-* task/#37/V.6.2.6 Fix сборки
+* task/#37/V.6.2.6 HOTFIX: SyntaxError в sql_export_settings_dialog.py

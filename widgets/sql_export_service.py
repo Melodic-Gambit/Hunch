@@ -38,7 +38,7 @@ class SqlExportService:
         queries:      List[Dict],  # [{display_name, filepath, connection, enabled}]
         folder:       str,
         filename_tpl: str,
-        write_mode:   str,         # "overwrite" | "append"
+        file_mode:    str,         # "daily" | "cumulative"
         sheet_mode:   str,         # "per_query" | "single"
         on_done:      Callable,    # on_done(filename: str, error: str | None)
     ) -> bool:
@@ -49,7 +49,7 @@ class SqlExportService:
             self._running = True
         threading.Thread(
             target=self._run,
-            args=(queries, folder, filename_tpl, write_mode, sheet_mode, on_done),
+            args=(queries, folder, filename_tpl, file_mode, sheet_mode, on_done),
             daemon=True,
         ).start()
         return True
@@ -63,7 +63,7 @@ class SqlExportService:
             except Exception:
                 pass
 
-    def _run(self, queries, folder, filename_tpl, write_mode, sheet_mode, on_done):
+    def _run(self, queries, folder, filename_tpl, file_mode, sheet_mode, on_done):
         try:
             import openpyxl
             from openpyxl.styles import Font, PatternFill, Alignment
@@ -80,14 +80,14 @@ class SqlExportService:
             on_done(filename="", error="Нет активных запросов")
             return
 
-        # ── имя файла (рендер токенов) ─────────────────────────────────────────
-        now = datetime.now()
-        filename = (filename_tpl
-                    .replace("{date}",     now.strftime("%Y-%m-%d"))
-                    .replace("{time}",     now.strftime("%H%M"))
-                    .replace("{datetime}", now.strftime("%Y-%m-%d_%H%M")))
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
+        now  = datetime.now()
+        base = filename_tpl.strip() or "отчёт"
+
+        # ── имя файла зависит от режима ────────────────────────────────────────
+        if file_mode == "cumulative":
+            filename = f"{base}.xlsx"
+        else:  # daily
+            filename = f"{now.strftime('%d.%m.%Y.')} {base}.xlsx"
 
         # ── создаём папку ──────────────────────────────────────────────────────
         try:
@@ -101,7 +101,7 @@ class SqlExportService:
         out_path = os.path.join(folder, filename)
 
         # ── открываем/создаём workbook ─────────────────────────────────────────
-        if write_mode == "append" and os.path.exists(out_path):
+        if file_mode == "cumulative" and os.path.exists(out_path):
             try:
                 wb = openpyxl.load_workbook(out_path)
             except Exception:
@@ -111,18 +111,30 @@ class SqlExportService:
             wb = openpyxl.Workbook()
             _del_default_sheet(wb)
 
-        hdr_font = Font(bold=True, color="FFFFFF")
-        hdr_fill = PatternFill("solid", fgColor="0D9488")
-        wrap_aln = Alignment(wrap_text=True, vertical="top")
+        hdr_font  = Font(bold=True, color="FFFFFF")
+        hdr_fill  = PatternFill("solid", fgColor="0D9488")
+        wrap_aln  = Alignment(wrap_text=True, vertical="top")
+        date_str  = now.strftime("%d.%m.%Y")   # для имён листов и разделителей
+        date_pfx  = now.strftime("%d.%m")       # короткий префикс для имён листов
 
-        # ── single-sheet: создаём один лист заранее ────────────────────────────
+        # ── single-sheet: берём существующий лист или создаём новый ───────────
         single_ws  = None
         single_row = 1
         if sheet_mode == "single":
             sn = "Выгрузка"
-            if sn in wb.sheetnames:
-                del wb[sn]
-            single_ws = wb.create_sheet(sn)
+            if file_mode == "cumulative" and sn in wb.sheetnames:
+                # дописываем в конец существующего листа
+                single_ws  = wb[sn]
+                single_row = (single_ws.max_row or 0) + 2
+                # разделитель с датой
+                cell = single_ws.cell(row=single_row, column=1,
+                                      value=f"═══ {date_str} ═══")
+                cell.font = Font(bold=True, size=11)
+                single_row += 1
+            else:
+                if sn in wb.sheetnames:
+                    del wb[sn]
+                single_ws = wb.create_sheet(sn)
 
         # ── основной цикл по запросам ──────────────────────────────────────────
         for q in active:
@@ -161,9 +173,18 @@ class SqlExportService:
 
             # записываем результат
             if sheet_mode == "per_query":
-                sn = dname[:31]
-                if sn in wb.sheetnames:
-                    del wb[sn]
+                if file_mode == "cumulative":
+                    # имя листа = "дд.мм Имя" — каждый день новый лист
+                    sn = f"{date_pfx} {dname}"[:31]
+                    counter = 1
+                    base_sn = sn
+                    while sn in wb.sheetnames:
+                        sn = f"{base_sn[:28]}_{counter}"
+                        counter += 1
+                else:
+                    sn = dname[:31]
+                    if sn in wb.sheetnames:
+                        del wb[sn]
                 ws = wb.create_sheet(sn)
                 _write_sheet(ws, cols, rows, hdr_font, hdr_fill, wrap_aln)
             else:

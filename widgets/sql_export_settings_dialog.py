@@ -44,14 +44,19 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
         self.title("Настройки — SQL Выгрузка")
         self.resizable(False, False)
         self.transient(parent)
-        try:
-            self.grab_set()
-        except Exception:
-            pass
+        # Делаем окно прозрачным и переводим в состояние "normal" ДО _build().
+        # Это гарантирует, что CTkToplevel._windows_set_titlebar_color() сохранит
+        # _state_before="normal" и _revert_withdraw вызовет deiconify(), а не
+        # state("withdrawn"). Без этого тяжёлый _build() задерживает event loop,
+        # и revert повторно скрывает окно уже после deiconify() в _center(),
+        # из-за чего grab на скрытом окне вызывает зависание приложения.
+        self.attributes("-alpha", 0)
+        self.deiconify()
+        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
         self._build()
-        self.after(60, self._center)
+        self.after(0, lambda: self._center(0))
 
     # ── centering ─────────────────────────────────────────────────────────────
 
@@ -65,14 +70,16 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
             if attempt < 20:
                 self.after(80, lambda: self._center(attempt + 1))
             else:
-                self.deiconify()
+                self._deactivate_windows_window_header_manipulation = True
+                self.attributes("-alpha", 1)
             return
         dw = self.winfo_reqwidth()
         dh = min(self.winfo_reqheight(), 820)
         x = px + max(0, (pw - dw) // 2)
         y = py + max(0, (ph - dh) // 2)
         self.geometry(f"{dw}x{dh}+{x}+{y}")
-        self.deiconify()
+        self._deactivate_windows_window_header_manipulation = True
+        self.attributes("-alpha", 1)
 
     # ── build ─────────────────────────────────────────────────────────────────
 
@@ -145,28 +152,35 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
         ctk.CTkLabel(row_fn, text="Имя файла:", width=80, anchor="w").grid(
             row=0, column=0, sticky="w")
         self._filename_var = tk.StringVar(
-            value=cfg("sql_export_filename_template", "отчёт_{date}.xlsx"))
+            value=cfg("sql_export_filename_template", "отчёт"))
         ctk.CTkEntry(row_fn, textvariable=self._filename_var,
+                     placeholder_text="Отчёты ОСАС",
                      height=30).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         ctk.CTkLabel(s2,
-                     text="Токены: {date} = ГГГГ-ММ-ДД  ·  {time} = ЧЧММ  ·  {datetime} = ГГГГ-ММ-ДД_ЧЧММ",
+                     text="В ежедневном режиме перед именем добавляется дата (дд.мм.гггг.)",
                      font=ctk.CTkFont(size=10),
                      text_color=("gray45", "gray55"),
                      anchor="w").pack(fill="x", padx=94, pady=(0, 4))
 
-        # Режим записи
-        row_wm = ctk.CTkFrame(s2, fg_color="transparent")
-        row_wm.pack(fill="x", padx=12, pady=(4, 10))
-        ctk.CTkLabel(row_wm, text="Режим:", width=80, anchor="w").pack(side="left")
-        saved_wm = cfg("sql_export_write_mode", "overwrite")
-        self._write_mode_var = tk.StringVar(value=saved_wm)
-        for val, lbl in (("overwrite", "Перезаписать файл"),
-                         ("append",    "Добавить листы")):
-            ctk.CTkRadioButton(row_wm, text=lbl,
-                               variable=self._write_mode_var, value=val,
+        # Режим файла
+        row_fm = ctk.CTkFrame(s2, fg_color="transparent")
+        row_fm.pack(fill="x", padx=12, pady=(4, 4))
+        ctk.CTkLabel(row_fm, text="Режим:", width=80, anchor="w").pack(side="left")
+        saved_fm = cfg("sql_export_file_mode", "daily")
+        self._file_mode_var = tk.StringVar(value=saved_fm)
+        for val, lbl in (("daily",      "Ежедневный файл с датой"),
+                         ("cumulative", "Накопительный файл без даты")):
+            ctk.CTkRadioButton(row_fm, text=lbl,
+                               variable=self._file_mode_var, value=val,
                                fg_color=_teal(), hover_color=_teal_hvr(),
                                ).pack(side="left", padx=(10, 0))
+
+        ctk.CTkLabel(s2,
+                     text="Ежедневный: каждый день новый файл  ·  Накопительный: один файл, данные за каждый день добавляются",
+                     font=ctk.CTkFont(size=10),
+                     text_color=("gray45", "gray55"),
+                     anchor="w").pack(fill="x", padx=94, pady=(0, 10))
 
         # ── 3. Расписание ──────────────────────────────────────────────────────
         s3 = self._section(body, "Расписание", row=2)
@@ -452,8 +466,8 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
         sm.set_setting("sql_export_queries",           queries)
         sm.set_setting("sql_export_folder",            self._folder_var.get().strip())
         sm.set_setting("sql_export_filename_template", self._filename_var.get().strip()
-                       or "отчёт_{date}.xlsx")
-        sm.set_setting("sql_export_write_mode",        self._write_mode_var.get())
+                       or "отчёт")
+        sm.set_setting("sql_export_file_mode",         self._file_mode_var.get())
         sm.set_setting("sql_export_sheet_mode",        self._sheet_mode_var.get())
         sm.set_setting("sql_export_schedule_hour",     h)
         sm.set_setting("sql_export_schedule_minute",   m)

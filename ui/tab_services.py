@@ -1560,7 +1560,7 @@ class ServicesTabMixin:
 
         ctk.CTkLabel(info_c, text="Файл:",
                      font=_LBL_FNT, text_color=("gray50", "gray60")).pack(side="left")
-        _tpl = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
+        _tpl = cfg("sql_export_filename_template", "отчёт")
         _tpl_short = _tpl if len(_tpl) <= 22 else _tpl[:19] + "…"
         self._sql_export_file_lbl = ctk.CTkLabel(
             info_c, text=_tpl_short,
@@ -1670,7 +1670,7 @@ class ServicesTabMixin:
                 text=f"{cnt} активных" if qs else "не настроены",
                 text_color=("gray20", "white") if qs else ("gray50", "gray60"),
             )
-        tpl = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
+        tpl = cfg("sql_export_filename_template", "отчёт")
         tpl_short = tpl if len(tpl) <= 22 else tpl[:19] + "…"
         if hasattr(self, "_sql_export_file_lbl"):
             self._sql_export_file_lbl.configure(text=tpl_short)
@@ -1746,9 +1746,9 @@ class ServicesTabMixin:
         cfg = self.settings_manager.get_setting
         queries  = cfg("sql_export_queries", [])
         folder   = cfg("sql_export_folder", "")
-        tpl      = cfg("sql_export_filename_template", "отчёт_{date}.xlsx")
-        wmode    = cfg("sql_export_write_mode", "overwrite")
-        smode    = cfg("sql_export_sheet_mode", "per_query")
+        tpl       = cfg("sql_export_filename_template", "отчёт")
+        file_mode = cfg("sql_export_file_mode", "daily")
+        smode     = cfg("sql_export_sheet_mode", "per_query")
 
         if not folder:
             if hasattr(self, "_sql_export_hint_lbl"):
@@ -1770,7 +1770,7 @@ class ServicesTabMixin:
 
         started = self._sql_export_service.start(
             queries=queries, folder=folder, filename_tpl=tpl,
-            write_mode=wmode, sheet_mode=smode,
+            file_mode=file_mode, sheet_mode=smode,
             on_done=_on_done,
         )
         if not started:
