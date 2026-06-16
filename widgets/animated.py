@@ -393,6 +393,7 @@ class Indicator2Widget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 
@@ -470,6 +471,7 @@ class TrafficWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick_blink()
         self._tick_phase()
@@ -632,6 +634,7 @@ class HeatTimeWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 
@@ -734,6 +737,7 @@ class StopwatchWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 
@@ -803,6 +807,7 @@ class WaveWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 
@@ -939,6 +944,7 @@ class EcgWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 
@@ -1023,6 +1029,7 @@ class RingsWidget(tk.Frame):
         c = tk.Canvas(self, bg=bg, highlightthickness=0, height=self._CH, width=1)
         c.pack(fill="both", expand=True)
         c.bind("<Configure>", lambda _e: self._draw())
+        c.bind("<Map>", lambda _e: self.after_idle(self._draw))
         self._canvas = c
         self._tick()
 

@@ -1,4 +1,3 @@
-﻿Версия v6.2.7
+﻿Версия v6.2.8
 
-* task/#38/V.6.2.7 BUG-91 исправлен. Вот что изменилось в widgets/sql_export_settings_dialog.py: Убран grab_set() из __init__ (вызывался пока окно было скрыто) Добавлен _safe_grab() — вызывает grab_set() в try/except В _center() после каждого deiconify() добавлен self.after(20, self._safe_grab) Добавлен _on_close() — делает grab_release() в try/except, затем destroy() WM_DELETE_WINDOW и кнопка «Отмена» теперь вызывают _on_close вместо destroy
-* task/#37/V.6.2.6 HOTFIX: SyntaxError в sql_export_settings_dialog.py
+* FIX Ошибки: 1. Toast закрывался через 30 секунд — даже если пользователь нажал "Установить" и шло скачивание. Теперь при нажатии "Установить" таймер автозакрытия отменяется.
