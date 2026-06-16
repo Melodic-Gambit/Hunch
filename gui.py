@@ -2653,31 +2653,17 @@ class MainWindow(LogsTabMixin, RemindersTabMixin, ConnectionsTabMixin, QueriesTa
                             def _launch():
                                 if toast.winfo_exists():
                                     prog_lbl.configure(text="Запуск установщика…")
-                                # Создаём bat с задержкой 3 с: приложение успеет закрыться
-                                # до того как установщик попытается заменить Hunch.exe
-                                import tempfile as _tmp, subprocess as _sp
-                                _bat = _tmp.mktemp(suffix=".bat")
-                                _launched = False
-                                try:
-                                    with open(_bat, "w") as _bf:
-                                        _bf.write(
-                                            "@echo off\n"
-                                            "timeout /t 3 /nobreak >nul\n"
-                                            f'start "" "{tmp_path}" /SILENT /RESTARTAPPLICATIONS\n'
-                                            'del "%~f0"\n'
-                                        )
-                                    _sp.Popen(
-                                        ["cmd.exe", "/c", _bat],
-                                        creationflags=_sp.CREATE_NO_WINDOW,
-                                    )
-                                    _launched = True
-                                except Exception:
-                                    pass
-                                if not _launched:
+                                # Non-daemon поток: живёт после destroy(), запускает
+                                # установщик через 3 с — Hunch.exe уже освобождён
+                                import threading as _thr2, time as _time2
+                                def _run_after_close():
+                                    _time2.sleep(3)
                                     _ct.windll.shell32.ShellExecuteW(
                                         None, "runas", tmp_path,
-                                        "/SILENT /FORCECLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+                                        "/SILENT /RESTARTAPPLICATIONS",
                                         None, 1)
+                                _thr2.Thread(target=_run_after_close,
+                                             daemon=False).start()
                                 self.after(300, self.destroy)
                             self.after(0, _launch)
                         except Exception as _err:
