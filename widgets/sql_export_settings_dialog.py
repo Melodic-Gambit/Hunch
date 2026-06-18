@@ -237,7 +237,21 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
             text="Все результаты в одной вкладке  (с разделителями)",
             variable=self._sheet_mode_var, value="single",
             fg_color=_teal(), hover_color=_teal_hvr(),
-        ).pack(anchor="w", padx=12, pady=(0, 10))
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+
+        ctk.CTkRadioButton(
+            s4,
+            text="Агрегировать числа — один лист со сводными данными",
+            variable=self._sheet_mode_var, value="aggregate",
+            fg_color=_teal(), hover_color=_teal_hvr(),
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+        ctk.CTkLabel(
+            s4,
+            text="Числовые ячейки суммируются по всем подключениям, текст берётся из первого",
+            font=ctk.CTkFont(size=10),
+            text_color=("gray45", "gray55"),
+            anchor="w",
+        ).pack(fill="x", padx=28, pady=(0, 10))
 
         # ── разделитель + кнопки ───────────────────────────────────────────────
         ctk.CTkFrame(self, height=1,
@@ -273,19 +287,18 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
 
     def _load_queries(self, saved_qs: list):
         """Заполняет таблицу запросов: сначала сохранённые, затем новые из queries/."""
-        # Создаём set уже добавленных путей
         existing_paths = {q.get("filepath", "") for q in saved_qs}
 
-        # Добавляем сохранённые
         for q in saved_qs:
+            # backward compat: старый формат "connection": str
+            conns = q.get("connections") or ([q.get("connection")] if q.get("connection") else [])
             self._add_query_row(
                 filepath=q.get("filepath", ""),
                 display_name=q.get("display_name", ""),
-                connection=q.get("connection", ""),
+                connections=conns,
                 enabled=q.get("enabled", True),
             )
 
-        # Добавляем новые файлы из queries/ которых ещё нет в сохранённых
         if self._qdir and os.path.isdir(self._qdir):
             for fname in sorted(os.listdir(self._qdir)):
                 if not fname.endswith(".sql"):
@@ -296,12 +309,12 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
                 self._add_query_row(
                     filepath=fpath,
                     display_name=os.path.splitext(fname)[0],
-                    connection=self._conns[0] if self._conns else "",
+                    connections=[self._conns[0]] if self._conns else [],
                     enabled=False,
                 )
 
     def _add_query_row(self, filepath: str, display_name: str,
-                       connection: str, enabled: bool):
+                       connections: list, enabled: bool):
         """Добавляет одну строку запроса в таблицу."""
         f = self._queries_frame
         r = len(self._query_rows)
@@ -334,29 +347,37 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
                                  text_color=("gray40", "gray60"),
                                  anchor="w")
         path_lbl.grid(row=0, column=2, sticky="ew", padx=(0, 6), pady=6)
-        # tooltip с полным путём
         path_lbl.bind("<Enter>",
                       lambda e, p=filepath: self._show_tooltip(e, p))
         path_lbl.bind("<Leave>", self._hide_tooltip)
 
-        # подключение
-        conn_names = self._conns if self._conns else ["—"]
-        conn_val = (connection if connection in conn_names else
-                    (conn_names[0] if conn_names else ""))
-        conn_var = tk.StringVar(value=conn_val)
-        conn_om  = ctk.CTkOptionMenu(row_frame, values=conn_names,
-                                      variable=conn_var,
-                                      width=140, height=26,
-                                      fg_color=("gray75", "gray28"),
-                                      button_color=("gray65", "gray22"))
-        conn_om.grid(row=0, column=3, padx=(0, 6), pady=6)
+        # мультиселект подключений
+        conn_state = {"list": list(connections)}
+
+        conn_frame = ctk.CTkFrame(row_frame, fg_color=("gray75", "gray28"),
+                                   corner_radius=4, width=160, height=26)
+        conn_frame.grid(row=0, column=3, padx=(0, 6), pady=6)
+        conn_frame.grid_propagate(False)
+        conn_frame.grid_columnconfigure(0, weight=1)
+
+        conn_lbl = ctk.CTkLabel(conn_frame,
+                                 text=self._conn_summary(conn_state["list"]),
+                                 font=ctk.CTkFont(size=10), anchor="w")
+        conn_lbl.grid(row=0, column=0, sticky="ew", padx=(6, 0))
+
+        conn_btn = ctk.CTkButton(conn_frame, text="▾", width=22, height=22,
+                                  fg_color=("gray65", "gray22"),
+                                  hover_color=("gray55", "gray18"))
+        conn_btn.configure(command=lambda cs=conn_state, cl=conn_lbl, cf=conn_frame:
+                               self._open_conn_picker(cs, cl, cf))
+        conn_btn.grid(row=0, column=1, padx=(0, 2), pady=2)
 
         # кнопка ×
         data = {
             "row_frame":   row_frame,
             "enabled_var": enabled_var,
             "name_var":    name_var,
-            "conn_var":    conn_var,
+            "conn_state":  conn_state,
             "filepath":    filepath,
         }
 
@@ -392,9 +413,81 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
         self._add_query_row(
             filepath=path,
             display_name=display,
-            connection=self._conns[0] if self._conns else "",
+            connections=[self._conns[0]] if self._conns else [],
             enabled=True,
         )
+
+    # ── connection helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _conn_summary(conn_list: list) -> str:
+        """Краткое отображение выбранных подключений для chips-виджета."""
+        if not conn_list:
+            return "— нет"
+        if len(conn_list) == 1:
+            return conn_list[0]
+        return f"{conn_list[0]} +{len(conn_list) - 1}"
+
+    def _open_conn_picker(self, conn_state: dict, conn_lbl, trigger_widget):
+        """Всплывающий чекбокс-список выбора подключений."""
+        trigger_widget.update_idletasks()
+        x = trigger_widget.winfo_rootx()
+        y = trigger_widget.winfo_rooty() + trigger_widget.winfo_height() + 2
+
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.wm_overrideredirect(True)
+        popup.configure(bg="#1e1e1e")
+
+        frame = ctk.CTkFrame(popup, fg_color=("gray85", "gray20"),
+                              corner_radius=6, border_width=1,
+                              border_color=("gray70", "gray35"))
+        frame.pack(padx=1, pady=1)
+
+        conn_names = self._conns if self._conns else []
+        check_vars = {}
+        for cname in conn_names:
+            var = tk.BooleanVar(value=(cname in conn_state["list"]))
+            check_vars[cname] = var
+            ctk.CTkCheckBox(frame, text=cname, variable=var,
+                            width=150, height=26,
+                            fg_color=_teal(), hover_color=_teal_hvr(),
+                            checkbox_width=14, checkbox_height=14,
+                            ).pack(anchor="w", padx=8, pady=(4, 0))
+
+        def on_ok():
+            conn_state["list"] = [c for c, v in check_vars.items() if v.get()]
+            conn_lbl.configure(text=self._conn_summary(conn_state["list"]))
+            _close()
+
+        def _close():
+            try:
+                popup.grab_release()
+            except Exception:
+                pass
+            try:
+                popup.destroy()
+            except Exception:
+                pass
+            try:
+                self.grab_set()
+            except Exception:
+                pass
+
+        ctk.CTkButton(frame, text="OK", command=on_ok,
+                      width=70, height=26,
+                      fg_color=_teal(), hover_color=_teal_hvr(),
+                      ).pack(pady=(6, 8))
+
+        popup.geometry(f"+{x}+{y}")
+        popup.deiconify()
+        try:
+            self.grab_release()
+            popup.grab_set()
+        except Exception:
+            pass
+        popup.bind("<Escape>", lambda e: _close())
+        popup.protocol("WM_DELETE_WINDOW", _close)
 
     # ── file section ───────────────────────────────────────────────────────────
 
@@ -406,11 +499,10 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
     # ── tooltip ────────────────────────────────────────────────────────────────
 
     def _show_tooltip(self, event, text: str):
-        import tkinter as tk_
-        top = tk_.Toplevel(self)
+        top = tk.Toplevel(self)
         top.wm_overrideredirect(True)
         top.wm_geometry(f"+{event.x_root + 12}+{event.y_root + 12}")
-        tk_.Label(top, text=text,
+        tk.Label(top, text=text,
                   background="#1A1A2E", foreground="white",
                   relief="flat", bd=0,
                   font=("Segoe UI", 10), wraplength=480,
@@ -451,7 +543,7 @@ class SqlExportSettingsDialog(ctk.CTkToplevel):
             queries.append({
                 "display_name": d["name_var"].get().strip() or "Query",
                 "filepath":     d["filepath"],
-                "connection":   d["conn_var"].get(),
+                "connections":  list(d["conn_state"]["list"]),
                 "enabled":      d["enabled_var"].get(),
             })
 

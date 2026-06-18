@@ -35,11 +35,11 @@ class SqlExportService:
 
     def start(
         self,
-        queries:      List[Dict],  # [{display_name, filepath, connection, enabled}]
+        queries:      List[Dict],  # [{display_name, filepath, connections, enabled}]
         folder:       str,
         filename_tpl: str,
         file_mode:    str,         # "daily" | "cumulative"
-        sheet_mode:   str,         # "per_query" | "single"
+        sheet_mode:   str,         # "per_query" | "single" | "aggregate"
         on_done:      Callable,    # on_done(filename: str, error: str | None)
     ) -> bool:
         """Запускает выгрузку в daemon-потоке. Возвращает False если уже выполняется."""
@@ -120,7 +120,7 @@ class SqlExportService:
         # ── single-sheet: берём существующий лист или создаём новый ───────────
         single_ws  = None
         single_row = 1
-        if sheet_mode == "single":
+        if sheet_mode in ("single", "aggregate"):
             sn = "Выгрузка"
             if file_mode == "cumulative" and sn in wb.sheetnames:
                 # дописываем в конец существующего листа
@@ -138,12 +138,25 @@ class SqlExportService:
 
         # ── основной цикл по запросам ──────────────────────────────────────────
         for q in active:
-            dname    = q.get("display_name", "Query")
-            fpath    = q.get("filepath", "")
-            conn_raw = q.get("connection", "")
-            conn     = conn_raw[:-5] if conn_raw.endswith(".json") else conn_raw
+            dname = q.get("display_name", "Query")
+            fpath = q.get("filepath", "")
 
-            self._log(f"Запрос: {dname} [{conn}]")
+            # backward compat: старый формат "connection": str
+            raw_conns = q.get("connections") or (
+                [q.get("connection", "")] if q.get("connection") else []
+            )
+            conns = [c[:-5] if c.endswith(".json") else c for c in raw_conns if c]
+
+            if not conns:
+                self._log(f"{dname}: не задано ни одно подключение", "ERROR")
+                if sheet_mode == "per_query":
+                    _write_error_sheet(wb, dname, "Не задано подключение")
+                else:
+                    single_row = _write_error_block(
+                        single_ws, single_row, dname, "Не задано подключение")
+                continue
+
+            self._log(f"Запрос: {dname} [{', '.join(conns)}]")
 
             # читаем SQL-файл
             try:
@@ -158,23 +171,34 @@ class SqlExportService:
                         single_ws, single_row, dname, str(e))
                 continue
 
-            # выполняем запрос (без валидации — через _run напрямую)
-            try:
-                rows, cols = self._db._run(conn, sql)
-                self._log(f"{dname}: {len(rows)} строк, {len(cols)} колонок")
-            except Exception as e:
-                self._log(f"Ошибка запроса {dname}: {e}", "ERROR")
+            # выполняем запрос против каждого подключения
+            all_results = []
+            for conn in conns:
+                try:
+                    rows, cols = self._db._run(conn, sql)
+                    all_results.append((rows, cols))
+                    self._log(f"{dname} [{conn}]: {len(rows)} строк")
+                except Exception as e:
+                    self._log(f"Ошибка {dname} [{conn}]: {e}", "ERROR")
+
+            if not all_results:
                 if sheet_mode == "per_query":
-                    _write_error_sheet(wb, dname, str(e))
+                    _write_error_sheet(wb, dname, "Все подключения вернули ошибку")
                 else:
                     single_row = _write_error_block(
-                        single_ws, single_row, dname, str(e))
+                        single_ws, single_row, dname, "Все подключения вернули ошибку")
                 continue
+
+            # агрегация если режим "aggregate" и несколько результатов
+            if sheet_mode == "aggregate" and len(all_results) > 1:
+                rows, cols = _aggregate_results(all_results)
+                self._log(f"{dname}: агрегировано {len(all_results)} подключений")
+            else:
+                rows, cols = all_results[0]
 
             # записываем результат
             if sheet_mode == "per_query":
                 if file_mode == "cumulative":
-                    # имя листа = "дд.мм Имя" — каждый день новый лист
                     sn = f"{date_pfx} {dname}"[:31]
                     counter = 1
                     base_sn = sn
@@ -231,6 +255,47 @@ def _del_default_sheet(wb):
     for name in ("Sheet", "Sheet1", "Лист1"):
         if name in wb.sheetnames:
             del wb[name]
+
+
+def _aggregate_results(results):
+    """Суммирует числовые ячейки из N одноструктурных результатов.
+
+    Текстовые ячейки (не парсятся как float) берутся из первого результата.
+    """
+    base_rows, cols = results[0]
+    if not base_rows:
+        return base_rows, cols
+
+    n_rows = len(base_rows)
+    n_cols = len(base_rows[0])
+    out = []
+
+    for ri in range(n_rows):
+        merged = []
+        for ci in range(n_cols):
+            base_val = base_rows[ri][ci]
+            total = None
+            for res_rows, _ in results:
+                if ri >= len(res_rows):
+                    total = None
+                    break
+                v = res_rows[ri][ci]
+                try:
+                    num = float(str(v).replace(" ", "").replace(",", "."))
+                    total = (total or 0) + num
+                except (ValueError, TypeError, AttributeError):
+                    total = None
+                    break
+            if total is not None:
+                try:
+                    merged.append(int(total) if total == int(total) else total)
+                except (OverflowError, ValueError):
+                    merged.append(total)
+            else:
+                merged.append(base_val)
+        out.append(tuple(merged))
+
+    return out, cols
 
 
 def _write_sheet(ws, cols, rows, hdr_font, hdr_fill, wrap_aln):
